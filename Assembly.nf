@@ -113,6 +113,14 @@ process  ASSEMBLY_HIFI {
     ""
 }
 
+process ASSEMBLY_HIBRID {
+    label 'verkko'
+    
+    script:
+    """
+    """
+}
+
 process SCAFFOLDING {
     label 'goldrush'
     label 'medium_resources'
