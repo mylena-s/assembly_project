@@ -62,7 +62,8 @@ process ASSEMBLY_ONT {
     mv .command.sh .command.log nextdenovo
     cp run.cfg nextdenovo
     """
-}    
+}
+
 process MAKECFG {
     publishDir "${params.publishDir}/assembly/nextpolish/", mode: 'copy', pattern: ".command*"
     
@@ -109,16 +110,44 @@ process POLISH {
 }
 
 process  ASSEMBLY_HIFI {
+    label 'hifiasm'
     script:
-    ""
+    """
+    
+    """
 }
 
-process ASSEMBLY_HIBRID {
+process ASSEMBLY_HIBRID{
     label 'verkko'
+
+    input:
+    path ONT_reads
+    path HIFI_reads // must create a dummy file for this
+    
+    output:
+    path genome
     
     script:
     """
+    verkko -d $PWD --hifi $HIFI_reads --nano $ONT_reads
     """
+}
+
+process BREAK_MISSASSEMBLY {
+    label 'goldrush'
+    label 'medium_resources'
+
+    publishDir "${params.publishDir}/assembly/tigmint/", mode: 'copy'
+
+    input:
+    path genome name "genome.fa"
+    path reads name "reads.fq.gz"
+
+    output:
+    path ""
+
+    script:
+    """tigmint-make tigmint-long draft=genome reads=reads span=auto G=$gs dist=auto""" 
 }
 
 process SCAFFOLDING {
@@ -128,7 +157,7 @@ process SCAFFOLDING {
     errorStrategy 'ignore'
 
     input:
-    path genome
+    path genome 
     path reads
 
     output:
@@ -326,9 +355,7 @@ workflow {
     }
     // or read assembly/ies to do QC
     if (params.assemble == false) {
-        POLISHED = Channel.fromPath(params.genome, checkIfExists: true)
-        HAPLOTIGS = PURGE_HAPLOTIGS(POLISHED, READS)
-        ASSEMBLIES = POLISHED.concat(HAPLOTIGS)
+        ASSEMBLIES = Channel.fromPath(params.genome, checkIfExists: true)
     }
     INPUT = READS.combine(ASSEMBLIES)
     //QC(INPUT) // MODIFY: QC SHOULD WORK WITH MORE THAN ONE ASSEMBLY
