@@ -113,7 +113,7 @@ process  ASSEMBLY_HIFI {
     label 'hifiasm'
     script:
     """
-    
+
     """
 }
 
@@ -144,10 +144,12 @@ process BREAK_MISSASSEMBLY {
     path reads name "reads.fq.gz"
 
     output:
-    path ""
+    path "breaktigs.fa", emit: output
 
     script:
-    """tigmint-make tigmint-long draft=genome reads=reads span=auto G=$gs dist=auto""" 
+    s = params.gs * 1000000
+    """tigmint-make tigmint-long draft=genome reads=reads span=auto G=$s dist=auto
+    mv nextdenovo.upper.CBFH00233.cut500.molecule.size2000.distauto.trim0.window1000.spanauto.breaktigs.fa breaktigs.fa""" 
 }
 
 process SCAFFOLDING {
@@ -168,8 +170,8 @@ process SCAFFOLDING {
     script:
     """
     ntLink_rounds run_rounds_gaps target=$genome reads=$reads k=32 w=250 t=$task.cpus rounds=3 clean=True overlap=True a=$params.nreads
-    mv *.fasta.k32.w250.z1000.ntLink.ntLink.gap_fill.fa.k32.w250.z1000.ntLink.scaffolds.gap_fill.fa ntlink.fasta
-    mv *.fasta.k32.w250.z1000.ntLink.ntLink.gap_fill.fa.k32.w250.z1000.ntLink.scaffolds.gap_fill.fa.agp ntlink.agp
+    mv ${genome}.k32.w250.z1000.ntLink.ntLink.gap_fill.fa.k32.w250.z1000.ntLink.scaffolds.gap_fill.fa ntlink.fasta
+    mv ${genome}.k32.w250.z1000.ntLink.ntLink.gap_fill.fa.k32.w250.z1000.ntLink.scaffolds.gap_fill.fa.agp ntlink.agp
     """
 }
 
@@ -191,7 +193,7 @@ process PURGE_HAPLOTIGS {
     minimap2 -ax map-ont $genome $reads --secondary=no | samtools sort -o mapping_LR.map-ont.bam -T tmp.ali
     purge_haplotigs hist -b mapping_LR.map-ont.bam  -g $genome  -t $task.cpus
     purge_haplotigs cov -i mapping_LR.map-ont.bam.gencov -l 5 -m 190 -h 190 -o coverage_stats.csv -j 190 -s 80
-    purge_haplotigs purge -g $genome -c coverage_stats.csv -t $task.cpus
+    purge_haplotigs purge -g $genome -c coverage_stats.csv -t $task.cpus -d -b mapping_LR.map-ont.bam
     mkdir haplotigs_out
     mv curated* coverage_stats.csv dotplots* mapping_LR.map-ont.bam.* haplotigs_out
     cp .command.sh .command.log haplotigs_out"""
@@ -333,8 +335,7 @@ params.assemble = false
 params.type = "nanopore" 
 params.gs = 900
 params.db = '/home/fhenning/Mylena/lib/actinopterygii_odb10.tar.gz'
-params.nreads = 5
-
+params.nreads = 2
 
 
 workflow {
@@ -343,11 +344,12 @@ workflow {
         if (params.type == "nanopore") {
             CONFIG = PREPARE_CONFIG(params.template1)
             PRIMARY = ASSEMBLY_ONT(READS,CONFIG).assembly
-            SCAFFOLD = SCAFFOLDING(PRIMARY, READS).scaffolded_genome
+            BREAKTIGS = BREAK_MISSASSEMBLY(PRIMARY, READS).output
+            SCAFFOLD = SCAFFOLDING(BREAKTIGS, READS).scaffolded_genome
             config = MAKECFG(SCAFFOLD).config_file
             POLISHED = POLISH(config, READS).assembly
             HAPLOTIGS = PURGE_HAPLOTIGS(POLISHED, READS)
-            ASSEMBLIES = PRIMARY.concat(SCAFFOLD, POLISHED, HAPLOTIGS)
+            ASSEMBLIES = PRIMARY.concat(BREAKTIGS, SCAFFOLD, POLISHED, HAPLOTIGS)
 
         } else {
             PRIMARY = ASSEMBLY_HIFI()
@@ -359,5 +361,6 @@ workflow {
     }
     INPUT = READS.combine(ASSEMBLIES)
     //QC(INPUT) // MODIFY: QC SHOULD WORK WITH MORE THAN ONE ASSEMBLY
+
 
 }
