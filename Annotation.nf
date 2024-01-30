@@ -1,8 +1,9 @@
 #!/usr/bin/env nextflow
 
 log.info """\
-    P I P E L I N E    F O R   A S S E M B L Y 
-    ==========================================
+    P I P E L I N E    F O R   R E P E A T 
+              A N N O T A T I O N 
+    =======================================
     Uses NextDenovo as ONT assembler or Hifiasm
                  for Pacbio hifi. 
     
@@ -13,7 +14,8 @@ log.info """\
 
 process REPEAT_ANNOT {
     label 'earlGrey'
-    publishDir "${params.publishDir}/annotation/", mode: 'copy', pattern: "*01_earlGrey_${genome.baseName}"
+    label 'resource_intensive'
+    publishDir "${params.publishDir}/annotation/", mode: 'copy', pattern: "*01_earlGrey"
     
     input:
     path genome
@@ -23,7 +25,7 @@ process REPEAT_ANNOT {
 
     script:
     """
-    earlGrey -g $genome -s "" -o ./01_earlGrey
+    earlGrey -g $genome -s "" -o ./01_earlGrey -t $task.cpus
     mv .command.log .command.sh 01_earlGrey
     """
 }    

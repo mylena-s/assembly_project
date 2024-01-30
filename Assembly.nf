@@ -68,7 +68,7 @@ process MAKECFG {
     publishDir "${params.publishDir}/assembly/nextpolish/", mode: 'copy', pattern: ".command*"
     
     input:
-    tuple val(genome)
+    val(genome)
     
     output:
     path 'run.cfg', emit: config_file
@@ -133,23 +133,29 @@ process ASSEMBLY_HIBRID{
     """
 }
 
-process BREAK_MISSASSEMBLY {
+process BREAK_MISSASSEM {
     label 'goldrush'
     label 'medium_resources'
 
     publishDir "${params.publishDir}/assembly/tigmint/", mode: 'copy'
 
     input:
-    path genome name "genome.fa"
-    path reads name "reads.fq.gz"
+    path genome, name: "genome.fa"
+    path reads, name: "reads.fq.gz"
 
     output:
     path "breaktigs.fa", emit: output
-
+    path "*.bed"
+    path "*.breaktigs.fa"
+    path "nametable"
     script:
-    s = params.gs * 1000000
-    """tigmint-make tigmint-long draft=genome reads=reads span=auto G=$s dist=auto
-    mv nextdenovo.upper.CBFH00233.cut500.molecule.size2000.distauto.trim0.window1000.spanauto.breaktigs.fa breaktigs.fa""" 
+    
+    """tigmint-make tigmint-long draft=genome reads=reads span=auto G=${params.gs}000000 dist=auto
+    grep ">" *.breaktigs.fa | sed 's/>//g' - > nameTable.temp 
+    seqkit replace -p '.+' -r 'ctg_{nr}' *.breaktigs.fa > breaktigs.fa 
+    grep ">" breaktigs.fa | sed 's/>//g' - > nameTable2.temp
+    paste -d '\t' nameTable.temp nameTable2.temp > nametable 
+    """ 
 }
 
 process SCAFFOLDING {
@@ -169,9 +175,10 @@ process SCAFFOLDING {
 
     script:
     """
-    ntLink_rounds run_rounds_gaps target=$genome reads=$reads k=32 w=250 t=$task.cpus rounds=3 clean=True overlap=True a=$params.nreads
-    mv ${genome}.k32.w250.z1000.ntLink.ntLink.gap_fill.fa.k32.w250.z1000.ntLink.scaffolds.gap_fill.fa ntlink.fasta
-    mv ${genome}.k32.w250.z1000.ntLink.ntLink.gap_fill.fa.k32.w250.z1000.ntLink.scaffolds.gap_fill.fa.agp ntlink.agp
+    seqkit seq -m 1000 $genome > genome_1k.fasta
+    ntLink_rounds run_rounds_gaps target= genome_1K.fa reads=$reads k=32 w=250 t=$task.cpus rounds=4 clean=True overlap=True a=$params.nreads
+    mv genome_1k.fasta.k32.w250.z1000.ntLink.ntLink.gap_fill.fa.k32.w250.z1000.ntLink.scaffolds.gap_fill.fa ntlink.fasta
+    mv genome_1k.fasta.k32.w250.z1000.ntLink.ntLink.gap_fill.fa.k32.w250.z1000.ntLink.scaffolds.gap_fill.fa.agp ntlink.agp
     """
 }
 
@@ -215,9 +222,8 @@ process RUN_GFSTATS {
     path '.command.*'
 
     script:
-    gs = params.gs * 100000
     """
-    gfastats $genome $params.gs --nstar-report -t > ${genome.baseName}.stats
+    gfastats $genome ${params.gs}00000 --nstar-report -t > ${genome.baseName}.stats
     """
 }
 
@@ -344,12 +350,12 @@ workflow {
         if (params.type == "nanopore") {
             CONFIG = PREPARE_CONFIG(params.template1)
             PRIMARY = ASSEMBLY_ONT(READS,CONFIG).assembly
-            BREAKTIGS = BREAK_MISSASSEMBLY(PRIMARY, READS).output
-            SCAFFOLD = SCAFFOLDING(BREAKTIGS, READS).scaffolded_genome
+            BREAKTIGS = BREAK_MISSASSEM(PRIMARY, READS).output
+            HAPLOTIGS = PURGE_HAPLOTIGS(BREAKTIGS, READS)
+            SCAFFOLD = SCAFFOLDING(HAPLOTIGS, READS).scaffolded_genome
             config = MAKECFG(SCAFFOLD).config_file
             POLISHED = POLISH(config, READS).assembly
-            HAPLOTIGS = PURGE_HAPLOTIGS(POLISHED, READS)
-            ASSEMBLIES = PRIMARY.concat(BREAKTIGS, SCAFFOLD, POLISHED, HAPLOTIGS)
+            ASSEMBLIES = PRIMARY.concat(BREAKTIGS, HAPLOTIGS, SCAFFOLD, POLISHED)
 
         } else {
             PRIMARY = ASSEMBLY_HIFI()
@@ -358,6 +364,8 @@ workflow {
     // or read assembly/ies to do QC
     if (params.assemble == false) {
         ASSEMBLIES = Channel.fromPath(params.genome, checkIfExists: true)
+        PURGE_HAPLOTIGS(ASSEMBLIES, READS) // comment this if haplotigs were purged before
+        
     }
     INPUT = READS.combine(ASSEMBLIES)
     //QC(INPUT) // MODIFY: QC SHOULD WORK WITH MORE THAN ONE ASSEMBLY

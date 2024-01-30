@@ -12,17 +12,19 @@ log.info """\
 
 
 process QC {
-    publishDir "${params.publishDir}/pre_assembly/", mode: 'copy'    
-
+    publishDir "${params.publishDir}/pre_assembly/", mode: 'copy'
+    label 'nanoplot'
+    label 'medium_resources'
+    
     input:
     path reads
 
     output:
-    path 'NanoPlot',      emit: output
+    path 'NanoPlot*', emit: output
   
     script:
     """
-    NanoPlot -t$task.cpus --verbose --huge -o NanoPlot --tsv_stats --raw --fastq $reads
+    NanoPlot -t $task.cpus --verbose --huge -o NanoPlot_${reads.baseName} --tsv_stats --raw --fastq $reads
     """
 }
 
@@ -62,11 +64,56 @@ process RUN_JELLYFISH{
     rm reads.jf """
 }
 
+process ADAPTOR_CHECK {
+    label 'porechop'
+    label 'medium_resources'
+    errorStrategy 'ignore'
+    publishDir "${params.publishDir}/pre_assembly/trimming/", mode: 'copy'    
+
+
+    input:
+    path reads
+
+    output:
+    path "*_trimmed.fq.gz", emit: reads, optional: true
+    path ".command.sh"
+    path ".command.log"
+
+    script:
+    """
+    porechop_abi -abi -i $reads -tmp ./temp -o ${reads.baseName}_trimmed.fq -t $task.cpus
+    pigz *_trimmed.fq"""
+}
+
+process CHIMERA_CHECK {
+    label 'yacrd'
+    label 'medium_resources'
+    errorStrategy 'ignore'
+    publishDir "${params.publishDir}/pre_assembly/chimera/", mode: 'copy'    
+
+    input:
+    path reads
+    output:
+    path "*_scrubb.fastq.gz", emit: reads
+    path ".command.sh"
+    path ".command.log"
+
+    script:
+//thre is an error in minimap command
+    """minimap2 -x ava-ont -g 500 $reads $reads > mapping.paf
+    yacrd -i overlap.paf -o reads.yacrd
+    yacrd -i mapping.paf -o reads.yacrd scrubb -i $reads -o ${reads.baseName}_scrubb.fastq.gz
+    """
+}
+
 workflow {
-    READS = Channel.fromPath(params.reads, checkIfExists:true) 
-//    QC()
-    KMER_HIST = RUN_JELLYFISH(READS)
-    REPORT = GENOMESCOPE(KMER_HIST.hist).genomescope_report
+    READS = Channel.fromPath(params.reads, checkIfExists:true)
+    TRIMMED = ADAPTOR_CHECK(READS).reads
+    SCRUBBED = CHIMERA_CHECK(TRIMMED).reads
+    READS_CH = READS.concat(TRIMMED, SCRUBBED)
+    QC(READS_CH)
+//    KMER_HIST = RUN_JELLYFISH(READS)
+//    REPORT = GENOMESCOPE(KMER_HIST.hist).genomescope_report
 }
 
 params.publishDir = ""
