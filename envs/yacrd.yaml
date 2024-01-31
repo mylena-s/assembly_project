@@ -1,0 +1,7 @@
+name: yacrd
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - yacrd

@@ -1,0 +1,6 @@
+name: earlgray
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - earlgrey
