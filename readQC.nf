@@ -12,7 +12,7 @@ log.info """\
 
 
 process QC {
-    publishDir "${params.publishDir}/pre_assembly/", mode: 'copy'
+    publishDir "${params.publishDir}/pre_assembly/nanoplot/", mode: 'copy'
     label 'nanoplot'
     label 'medium_resources'
     
