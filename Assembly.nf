@@ -335,13 +335,13 @@ workflow QC {
 //     CLEANESS = RUN_BLOBTOOLS()
 }
 
-params.template1 = "/home/fhenning/Mylena/lib/nextdenovo.cfg"
-params.template2 = "/home/fhenning/Mylena/lib/nextpolish.cfg"
+params.template1 = "/home/fhenning/assembly_project/lib/nextdenovo.cfg"
+params.template2 = "/home/fhenning/assembly_project/lib/nextpolish.cfg"
 params.assemble = false 
 params.type = "nanopore" 
 params.gs = 900
-params.db = '/home/fhenning/Mylena/lib/actinopterygii_odb10.tar.gz'
-params.nreads = 2
+params.db = '/home/fhenning/assembly_project/lib/actinopterygii_odb10.tar.gz'
+params.nreads = 3
 
 
 workflow {
