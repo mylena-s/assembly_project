@@ -5,9 +5,7 @@ log.info """\
     ==========================================
     Uses NextDenovo as ONT assembler or Hifiasm
                  for Pacbio hifi. 
-    
-    Also performs QC with different tools
-    
+        
     Current project dir. is: $projectDir"""
     .stripIndent()
 
@@ -166,7 +164,7 @@ process SCAFFOLDING {
 
     input:
     path genome 
-    path reads
+    path reads,  name: "reads.fq.gz"
 
     output:
     path("ntlink.fasta"), emit: scaffolded_genome
@@ -176,7 +174,7 @@ process SCAFFOLDING {
     script:
     """
     seqkit seq -m 1000 $genome > genome_1k.fasta
-    ntLink_rounds run_rounds_gaps target= genome_1K.fa reads=$reads k=32 w=250 t=$task.cpus rounds=4 clean=True overlap=True a=$params.nreads
+    ntLink_rounds run_rounds_gaps target=genome_1k.fasta reads=reads.fq.gz k=32 w=250 t=$task.cpus rounds=4 clean=True overlap=True a=$params.nreads
     mv genome_1k.fasta.k32.w250.z1000.ntLink.ntLink.gap_fill.fa.k32.w250.z1000.ntLink.scaffolds.gap_fill.fa ntlink.fasta
     mv genome_1k.fasta.k32.w250.z1000.ntLink.ntLink.gap_fill.fa.k32.w250.z1000.ntLink.scaffolds.gap_fill.fa.agp ntlink.agp
     """
@@ -194,6 +192,7 @@ process PURGE_HAPLOTIGS {
 
     output:
     path "haplotigs_out"
+    path "haplotigs_out/curated.fasta", emit: curated
 
     script:
     """
@@ -206,134 +205,6 @@ process PURGE_HAPLOTIGS {
     cp .command.sh .command.log haplotigs_out"""
 }
 
-///// STATS ///////
-
-process RUN_GFSTATS {
-    label 'low_resources'
-    publishDir "${params.publishDir}/assembly/QC/00_gfstats_${genome.baseName}/", mode: 'copy'
-    publishDir "${params.publishDir}/assembly/QC/00_gfstats_${genome.baseName}/", mode: 'copy'
-    publishDir "${params.publishDir}/assembly/QC/00_gfstats_${genome.baseName}/", mode: 'copy'
-    
-    input:
-    tuple path(reads), path(genome)
-
-    output:
-    path '*.stats'
-    path '.command.*'
-
-    script:
-    """
-    gfastats $genome ${params.gs}00000 --nstar-report -t > ${genome.baseName}.stats
-    """
-}
-
-process RUN_KAT {
-    label 'kat'
-    label 'medium_resources'
-    publishDir "${params.publishDir}/assembly/QC/", mode: 'copy', pattern:"02_kat", saveAs: "02_kat_${genome.baseName}"    
-    errorStrategy 'ignore'
-
-    input:
-    tuple path(reads), path(genome)
-
-
-    output:
-    path "02_kat*"
-
-    script:
-    """kat comp $reads $genome -o kat -t $task.cpus
-    mkdir 02_kat
-    mv .command.* 02_kat
-    mv kat* 02_kat
-    cp .command.sh .command.log 02_kat
-    """
-}
-
-process RUN_BUSCO {
-    label 'busco'
-    label 'medium_resources'
-    publishDir "${params.publishDir}/assembly/QC/", mode: 'copy'
-    
-    input:
-    tuple path(reads), path(genome)
-
-
-    output:
-    path '01_busco_out*'
-
-    script:
-
-    """
-    busco -i $genome -l actinopterygii_odb10 -o 01_busco_out_${genome.baseName} -m genome -c $task.cpus
-    cp .command.* 01_busco_out_${genome.baseName} 
-    """
-}
-
-process RUN_INSPECTOR {
-    label 'inspector'
-    label 'resource_intensive'
-    publishDir "${params.publishDir}/assembly/QC/", mode: 'copy', saveAs:"03_inspector_out_${genome.baseName}"    
-   
-    input:
-    tuple path(reads), path(genome)
-
-
-    output:
-    path '03_inspector_out'
-
-    
-    script:
-    """inspector.py -c $genome -r $reads -o 03_inspector_out --datatype $params.type --thread $task.cpus --min_contig_length_assemblyerror 10000
-    gzip 03_inspector_out/read_to_contig.bam
-    rm -r 03_inspector_out/*_workspace
-    cp .command.sh .command.log 03_inspector_out
-    """
-}
-
-process PREPARE_BLOBTOOLS {
-    script:
-    """blastn -task megablast -query $genome -db $database -outfmt '6 qseqid staxids bitscore std sscinames sskingdoms stitle' -culling_limit 5 -num_threads 50 -evalue 1e-25 -max_target_seqs 5 -out blobtools_blast.out
-    minimap2 -ax map-ont ref.fa ont.fq.gz > aln.sam         # Oxford Nanopore genomic reads
-
-"""
-}
-
-
-process RUN_BLOBTOOLS {
-    label 'medium_resources'
-    label 'blobtools'
-
-    input:
-    path genome
-    path blastout
-    tuple path(sortedbam), path(bamindex)
-    
-    output:
-    path 'blobtools_dir', emit: folder
-    tuple path('blobtools_dir/blobDB.table.txt'), val ("${transcriptome.baseName}"), emit: blobout
-   
-    script:
-    """
-    mkdir blobtools_dir
-    blobtools create -i $transcriptome -t $blastout -b $sortedbam
-    blobtools plot -i blobDB.json -r superkingdom
-    blobtools plot -i blobDB.json -r phylum
-    blobtools plot -i blobDB.json -r order
-    blobtools view -i blobDB.json -r superkingdom
-    mv *.png *txt blobtools_dir"""
-}
-
-workflow QC {
-    take:
-        INPUT
-
-    main:
-        CONTINUITY = RUN_GFSTATS(INPUT)
-        COMPLETENESS = RUN_BUSCO(INPUT)
-        COMPLETENESS = RUN_KAT(INPUT)
-//        CORRECTNESS = RUN_INSPECTOR(INPUT)
-//     CLEANESS = RUN_BLOBTOOLS()
-}
 
 params.template1 = "/home/fhenning/assembly_project/lib/nextdenovo.cfg"
 params.template2 = "/home/fhenning/assembly_project/lib/nextpolish.cfg"
@@ -341,7 +212,7 @@ params.assemble = false
 params.type = "nanopore" 
 params.gs = 900
 params.db = '/home/fhenning/assembly_project/lib/actinopterygii_odb10.tar.gz'
-params.nreads = 3
+params.nreads = 2
 
 
 workflow {
@@ -351,7 +222,7 @@ workflow {
             CONFIG = PREPARE_CONFIG(params.template1)
             PRIMARY = ASSEMBLY_ONT(READS,CONFIG).assembly
             BREAKTIGS = BREAK_MISSASSEM(PRIMARY, READS).output
-            HAPLOTIGS = PURGE_HAPLOTIGS(BREAKTIGS, READS)
+            HAPLOTIGS = PURGE_HAPLOTIGS(BREAKTIGS, READS).curated
             SCAFFOLD = SCAFFOLDING(HAPLOTIGS, READS).scaffolded_genome
             config = MAKECFG(SCAFFOLD).config_file
             POLISHED = POLISH(config, READS).assembly
@@ -364,11 +235,11 @@ workflow {
     // or read assembly/ies to do QC
     if (params.assemble == false) {
         ASSEMBLIES = Channel.fromPath(params.genome, checkIfExists: true)
-        PURGE_HAPLOTIGS(ASSEMBLIES, READS) // comment this if haplotigs were purged before
+     //   PURGE_HAPLOTIGS(ASSEMBLIES, READS) // comment this if haplotigs were purged before
         
     }
     INPUT = READS.combine(ASSEMBLIES)
-    //QC(INPUT) // MODIFY: QC SHOULD WORK WITH MORE THAN ONE ASSEMBLY
+ //   QC(INPUT) // MODIFY: QC SHOULD WORK WITH MORE THAN ONE ASSEMBLY
 
 
 }
