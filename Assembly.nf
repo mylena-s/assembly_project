@@ -235,11 +235,9 @@ workflow {
     // or read assembly/ies to do QC
     if (params.assemble == false) {
         ASSEMBLIES = Channel.fromPath(params.genome, checkIfExists: true)
-     //   PURGE_HAPLOTIGS(ASSEMBLIES, READS) // comment this if haplotigs were purged before
         
     }
     INPUT = READS.combine(ASSEMBLIES)
- //   QC(INPUT) // MODIFY: QC SHOULD WORK WITH MORE THAN ONE ASSEMBLY
 
 
 }
