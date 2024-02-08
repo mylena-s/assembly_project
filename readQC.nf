@@ -107,6 +107,8 @@ process CHIMERA_CHECK {
 }
 
 workflow {
+    SCRUBBED = channel.empty()    
+
     if (params.trimmed == false) {
         READS = Channel.fromPath(params.reads, checkIfExists:true)
         TRIMMED = ADAPTOR_CHECK(READS).reads
@@ -114,10 +116,11 @@ workflow {
        READS = channel.empty()    
        TRIMMED = Channel.fromPath(params.reads, checkIfExists:true)
     }
+    if (params.scrub == true) {
+        SCRUBBED = CHIMERA_CHECK(TRIMMED).reads}
 
-    SCRUBBED = CHIMERA_CHECK(TRIMMED).reads
-    READS_CH = READS.concat(TRIMMED, SCRUBBED)
-    QC(READS_CH)
+      READS_CH = READS.concat(READS, TRIMMED, SCRUBBED)
+      QC(READS_CH)
 //    KMER_HIST = RUN_JELLYFISH(READS)
 //    REPORT = GENOMESCOPE(KMER_HIST.hist).genomescope_report
 }
@@ -125,3 +128,4 @@ workflow {
 params.type = "ONT"
 params.kmer = 15
 params.trimmed = false
+params.scrub = false
