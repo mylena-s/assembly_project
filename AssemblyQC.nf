@@ -73,7 +73,7 @@ process RUN_BUSCO {
 process RUN_INSPECTOR {
     label 'inspector'
     label 'resource_intensive'
-    publishDir "${params.publishDir}/assembly/QC/", mode: 'copy', saveAs:"03_inspector_out_${genome.baseName}"    
+    publishDir "${params.publishDir}/assembly/QC/", mode: 'copy', saveAs:"03_inspector_out_${genome.baseName}", pattern:"03_inspector_out/"
    
     input:
     tuple path(reads), path(genome)
@@ -81,24 +81,50 @@ process RUN_INSPECTOR {
 
     output:
     path '03_inspector_out'
+    path '03_inspector_out/read_to_contig.bam', emit: mappings
 
     
     script:
     """inspector.py -c $genome -r $reads -o 03_inspector_out --datatype $params.type --thread $task.cpus --min_contig_length_assemblyerror 10000
-    gzip 03_inspector_out/read_to_contig.bam
+    pigz 03_inspector_out/read_to_contig.bam
     rm -r 03_inspector_out/*_workspace
     cp .command.sh .command.log 03_inspector_out
     """
 }
 
-process PREPARE_BLOBTOOLS {
-    script:
-    """blastn -task megablast -query $genome -db $database -outfmt '6 qseqid staxids bitscore std sscinames sskingdoms stitle' -culling_limit 5 -num_threads 50 -evalue 1e-25 -max_target_seqs 5 -out blobtools_blast.out
-    minimap2 -ax map-ont ref.fa ont.fq.gz > aln.sam         # Oxford Nanopore genomic reads
+process BLAST {
+    label 'resource_intensive'
+    
+    input:
+    path genome
 
+    val db
+
+    output
+    path ' blobtools_blast.out', emit: blastout
+
+    script:
+    """
+    blastn -query $genome -db $db -outfmt "6 qseqid staxids bitscore std" -num_threads $task.cpus -evalue 1e-25 \
+    -max_target_seqs 10 -max_hsps 1 -out blobtools_blast.out
 """
 }
 
+process MINIMAP{
+    label 'medium_resources'
+    label 'inspector'
+
+    input:
+    path genome
+    path reads
+
+    output:
+    path 'read_to_contig.bam', emit: mappings
+
+    script:
+    """minimap2 -ax map-$params.dtype $genome $reads | samtools sort -@$task.cpus -O BAM -o read_to_contig.bam -
+    """
+}
 
 process RUN_BLOBTOOLS {
     label 'medium_resources'
@@ -107,7 +133,7 @@ process RUN_BLOBTOOLS {
     input:
     path genome
     path blastout
-    tuple path(sortedbam), path(bamindex)
+    path sortedbam
     
     output:
     path 'blobtools_dir', emit: folder
@@ -115,31 +141,58 @@ process RUN_BLOBTOOLS {
    
     script:
     """
-    mkdir blobtools_dir
-    blobtools create -i $transcriptome -t $blastout -b $sortedbam
-    blobtools plot -i blobDB.json -r superkingdom
-    blobtools plot -i blobDB.json -r phylum
-    blobtools plot -i blobDB.json -r order
-    blobtools view -i blobDB.json -r superkingdom
-    mv *.png *txt blobtools_dir"""
+    blobtools create --fasta $genome 04_blobtools_${genome.baseName}
+    blobtools add --hits $blastout --cov $sortedbam --taxdump $projectDir/lib/taxdump/ 04_blobtools_${genome.baseName}
+    """    
 }
 params.continuity = true
 params.genecompleteness = false
 params.readcompleteness = false
 params.correctness = false
 params.cleaness = false
+params.all = false
+params.dtype = 'ont'
+
+workflow CONTAMINATION {
+    take:
+        READS
+        ASSEMBLIES
+        MAPPINGS // puede estar vacio
+    main:
+        if (mapped == false){
+            MAPPINGS = MINIMAP(READS, ASSEMBLIES) // tuple output ASSEMBLY, BAM
+            }
+        else {
+            MAPPINGS \
+            | ifEmpty { 'EMPTY' } \
+            | MAPPINGS = MINIMAP(READS, ASSEMBLIES)}
+        BLOBINPUT = BLAST(MAPPINGS).blastout // tuple input ASSEMBLY, BAM // output tuple ASSEMBLY, BAM, BLASTOUT     
+        BLOB = RUN_BLOBTOOLS(BLOBINPUT) // TUPLE INPUT; END
+}
 
 workflow {
     ASSEMBLIES = Channel.fromPath(params.genome, checkIfExists: true)    
     INPUT = READS.combine(ASSEMBLIES)
+    MAPPINGS = channel.empty()    
+
     if (params.continuity == true){
         CONTINUITY = RUN_GFSTATS(INPUT)}
     if (params.genecompleteness == true){
-        COMPLETENESS = RUN_BUSCO(INPUT)}
+        GCOMPLETENESS = RUN_BUSCO(INPUT)}
     if (params.readcompleteness == true){
-        COMPLETENESS = RUN_KAT(INPUT)}
+        RCOMPLETENESS = RUN_KAT(INPUT)}
     if (params.correctness == true){
         CORRECTNESS = RUN_INSPECTOR(INPUT)}
+        MAPPINGS = CORRECTNESS.mappings
 //    if (params.cleaness == true){
-//     CLEANESS = RUN_BLOBTOOLS()}
+//     CLEANESS = CONTAMINATION()}
+
+    if (params.all == true){
+                CONTINUITY = RUN_GFSTATS(INPUT)
+                GCOMPLETENESS = RUN_BUSCO(INPUT)
+                RCOMPLETENESS = RUN_KAT(INPUT)
+                CORRECTNESS = RUN_INSPECTOR(INPUT)
+                MAPPINGS = CORRECTNESS.mappings  ///// tuple output ASSEMBLY, BAM 
+                CLEANESS = CONTAMINATION() 
+}
 }
