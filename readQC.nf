@@ -106,6 +106,19 @@ process CHIMERA_CHECK {
     """
 }
 
+process CUTADAPT{
+    label 'cutadapt'
+    label 'low_resources'
+
+    input:
+    path reads
+    output
+    path '*_trimmed.fq.gz' emit: reads
+    script:
+    """
+    cutadapt -b ATCTCTCTCAACAACAACAACGGAGGAGGAGGAAAAGAGAGAGAT -b ATCTCTCTCTTTTCCTCCTCCTCCGTTGTTGTTGTTGAGAGAGAT -e 0.1 -O 35 --rc --discard-trimmed -j 0 -o ${reads.baseName}_trimmed.fq.gz $reads -j 10
+    """
+}
 workflow {
     SCRUBBED = channel.empty()    
 
@@ -116,19 +129,21 @@ workflow {
         if (params.type == 'hifi') {
             TRIMMED = CUTADAPT(READS).reads}
     } else {
-       READS = channel.empty()    
-       TRIMMED = Channel.fromPath(params.reads, checkIfExists:true)
-    }
+        READS = channel.empty()    
+        TRIMMED = Channel.fromPath(params.reads, checkIfExists:true)}
     if (params.scrub == true) {
         SCRUBBED = CHIMERA_CHECK(TRIMMED).reads}
 
-      READS_CH = READS.concat(READS, TRIMMED, SCRUBBED)
-      QC(READS_CH)
-//    KMER_HIST = RUN_JELLYFISH(READS)
-//    REPORT = GENOMESCOPE(KMER_HIST.hist).genomescope_report
+    READS_CH = READS.concat(READS, TRIMMED, SCRUBBED)
+    QC(READS_CH)
+
+    if (params.statistics == true){
+        KMER_HIST = RUN_JELLYFISH(READS)
+        REPORT = GENOMESCOPE(KMER_HIST.hist).genomescope_report}
 }
 
 params.type = "ont"
-params.kmer = 15
+params.kmer = 21
 params.trimmed = false
 params.scrub = false
+params.statistics = false
