@@ -76,9 +76,9 @@ process ADAPTOR_CHECK {
     path reads
 
     output:
-    path "*_trimmed.fq.gz", emit: reads, optional: true
+    path "*_trimmed.fq.gz", emit: reads
     path ".command.sh"
-    path ".command.log"
+    path ".command.log", emit: report
 
     script:
     """
@@ -115,9 +115,14 @@ process CUTADAPT{
     path reads
     output
     path '*_trimmed.fq.gz' emit: reads
+    path '*.cutadapt.json', emit: report
     script:
     """
-    cutadapt -b ATCTCTCTCAACAACAACAACGGAGGAGGAGGAAAAGAGAGAGAT -b ATCTCTCTCTTTTCCTCCTCCTCCGTTGTTGTTGTTGAGAGAGAT -e 0.1 -O 35 --rc --discard-trimmed -j 0 -o ${reads.baseName}_trimmed.fq.gz $reads -j 10
+    cutadapt -b ATCTCTCTCAACAACAACAACGGAGGAGGAGGAAAAGAGAGAGAT \
+    -b ATCTCTCTCTTTTCCTCCTCCTCCGTTGTTGTTGTTGAGAGAGAT \
+    -e 0.1 -O 35 --rc --discard-trimmed -j 0 \
+    -o ${reads.baseName}_trimmed.fq.gz $reads \
+    -j 10 --json=${reads.baseName}.cutadapt.json
     """
 }
 
@@ -134,13 +139,18 @@ process MULTIQC{
 }
 workflow {
     SCRUBBED = channel.empty()    
-
+    REPORTS =  channel.empty()
     if (params.trimmed == false) {
         READS = Channel.fromPath(params.reads, checkIfExists:true)
         if (params.type == 'ont') {
-            TRIMMED = ADAPTOR_CHECK(READS).reads}
+            RESULTS = ADAPTOR_CHECK(READS)
+            TRIMMED = RESULTS.out.reads
+            REPORTS = RESULTS.report.out.collect()}
+            
         if (params.type == 'hifi') {
-            TRIMMED = CUTADAPT(READS).reads}
+            RESULTS = CUTADAPT(READS)}
+            TRIMMED = RESULTS.out.reads
+            REPORTS = RESULTS.out.report.collect()
     } else {
         READS = channel.empty()    
         TRIMMED = Channel.fromPath(params.reads, checkIfExists:true)}
@@ -148,7 +158,7 @@ workflow {
         SCRUBBED = CHIMERA_CHECK(TRIMMED).reads}
 
     READS_CH = READS.concat(READS, TRIMMED, SCRUBBED)
-    NANOPLOT = QC(READS_CH).collect()
+    NANOPLOT = QC(READS_CH).output.collect()
 
     if (params.statistics == true){
         KMER_HIST = RUN_JELLYFISH(READS)
