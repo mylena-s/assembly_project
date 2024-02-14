@@ -73,22 +73,22 @@ process RUN_BUSCO {
 process RUN_INSPECTOR {
     label 'inspector'
     label 'resource_intensive'
-    publishDir "${params.publishDir}/assembly/QC/", mode: 'copy', saveAs:"03_inspector_out_${genome.baseName}", pattern:"03_inspector_out/"
+    publishDir "${params.publishDir}/assembly/QC/", mode: 'copy', pattern:"03_inspector_out*/"
    
     input:
     tuple path(reads), path(genome)
 
 
     output:
-    path '03_inspector_out'
-    path '03_inspector_out/read_to_contig.bam', emit: mappings
+    path '03_inspector_out*/'
+    path '03_inspector_out*/read_to_contig.bam.gz', emit: mappings
 
     
     script:
-    """inspector.py -c $genome -r $reads -o 03_inspector_out --datatype $params.type --thread $task.cpus --min_contig_length_assemblyerror 10000
-    pigz 03_inspector_out/read_to_contig.bam
-    rm -r 03_inspector_out/*_workspace
-    cp .command.sh .command.log 03_inspector_out
+    """inspector.py -c $genome -r $reads -o 03_inspector_out_${genome.baseName} --datatype $params.dtype --thread $task.cpus --min_contig_length_assemblyerror 10000
+    pigz 03_inspector_out*/read_to_contig.bam
+    rm -r 03_inspector_out*/*_workspace
+    cp .command.sh .command.log 03_inspector_out*/
     """
 }
 
@@ -145,13 +145,42 @@ process RUN_BLOBTOOLS {
     blobtools add --hits $blastout --cov $sortedbam --taxdump $projectDir/lib/taxdump/ 04_blobtools_${genome.baseName}
     """    
 }
-params.continuity = true
-params.genecompleteness = false
-params.readcompleteness = false
-params.correctness = false
-params.cleaness = false
-params.all = false
-params.dtype = 'ont'
+
+process RETRIEVE_MITO {
+    label 'low_resources'
+    publishDir "${params.publishDir}/assembly/QC/05_mitochondria", mode: 'copy'
+
+    input:
+    path genome
+
+    output:
+    path '*_mito.out'
+    path '.command.*'
+    path 'putative_mito.fasta', emit: mitochondria
+
+    script:
+    """
+    makeblastdb -dbtype nucl -in $genome
+    blastn -query $projectDir'/lib/'$params.mito -db ${genome.name} -outfmt 6 -evalue 1e-25 -num_threads $task.cpus -max_target_seqs 5 -out ${genome.baseName}_mito.out
+    sort -k3 -u *_mito.out | awk '{print \$2}' | head -1 > putative_contig
+    seqkit grep -f putative_contig $genome > putative_mito.fasta"""
+}
+
+process CIRCULARIZE{
+    publishDir "${params.publishDir}/assembly/QC/05_mitochondria", mode: 'copy'
+    label 'nanoplot'
+    label 'low_resources'
+    input:
+    path mitochondria
+
+    output:
+    path "circMitochondria.fasta"
+
+    script:
+    """
+    simple_circularise.py $mitochondria circMitochondria.fasta -min 10000
+    """
+}
 
 workflow CONTAMINATION {
     take:
@@ -163,18 +192,92 @@ workflow CONTAMINATION {
             MAPPINGS = MINIMAP(READS, ASSEMBLIES) // tuple output ASSEMBLY, BAM
             }
         else {
-            MAPPINGS \
-            | ifEmpty { 'EMPTY' } \
-            | MAPPINGS = MINIMAP(READS, ASSEMBLIES)}
+            MAPPINGS.ifEmpty{MAPPINGS = MINIMAP(READS, ASSEMBLIES)}}
+
         BLOBINPUT = BLAST(MAPPINGS).blastout // tuple input ASSEMBLY, BAM // output tuple ASSEMBLY, BAM, BLASTOUT     
         BLOB = RUN_BLOBTOOLS(BLOBINPUT) // TUPLE INPUT; END
 }
 
+process MAKECFG {
+    publishDir "${params.publishDir}/assembly/QC/05_mitochondria/mitonextpolish/", mode: 'copy', pattern: ".command*"
+    
+    input:
+    val(genome)
+    
+    output:
+    path 'run.cfg', emit: config_file
+    path '.command*'
+    
+    script:
+    """#!/usr/bin/env python3
+with open('$params.template2', 'r') as file:
+  content = file.read()
+  content = content.replace('INPUT','$genome')
+with open('run.cfg', 'w') as file:
+  file.write(content)
+    """
+}
+
+process POLISH {
+    label 'nextpolish'
+    label 'medium_resources'
+    publishDir "${params.publishDir}/assembly/QC/05_mitochondria", mode: 'copy', pattern: "*nextpolish"    
+
+    input:
+    path config_file
+    path reads
+    
+    output:
+    path 'mitonextpolish'
+    path('mitonextpolish/mitochondria_polished.fasta'), emit: assembly
+
+    script:
+    """
+    ls $reads > lgs.fofn
+    nextPolish $config_file
+    seqkit seq 01_rundir/genome.nextpolish.fasta -u > 01_rundir/mitochondria_polished.fasta
+    mkdir mitonextpolish
+    mv 01_rundir/mitochondria_polished.fasta mitonextpolish
+    mv 01_rundir/*fasta.stat mitonextpolish
+    cp .command.sh .command.log mitonextpolish
+    """
+}
+
+workflow ASSEMBLE_MITOCHONDRIA{
+    take:
+        READS
+        ASSEMBLIES
+    main:
+        MITO_BLAST = RETRIEVE_MITO(ASSEMBLIES).mitochondria
+        config = MAKECFG(MITO_BLAST).config_file
+        POLISHED = POLISH(config, READS).assembly
+}
+
+workflow ALL {
+    take:
+        READS
+        ASSEMBLIES
+        MAPPINGS
+    main:
+        INPUT = READS.combine(ASSEMBLIES)
+        CONTINUITY = RUN_GFSTATS(INPUT)
+        GCOMPLETENESS = RUN_BUSCO(INPUT)
+        RCOMPLETENESS = RUN_KAT(INPUT)
+        CORRECTNESS = RUN_INSPECTOR(INPUT)
+        MAPPINGS = CORRECTNESS.mappings
+            //CLEANESS = CONTAMINATION(READS, ASSEMBLIES, MAPPINGS)
+}
+
 workflow {
+    READS = Channel.fromPath(params.reads, checkIfExists:true) 
     ASSEMBLIES = Channel.fromPath(params.genome, checkIfExists: true)    
     INPUT = READS.combine(ASSEMBLIES)
+ 
     MAPPINGS = channel.empty()    
-
+    if (params.all == true){
+        ALL(READS, ASSEMBLIES, MAPPINGS)}
+    if (params.mitassembly == true) {
+        ASSEMBLE_MITOCHONDRIA(READS, ASSEMBLIES)}
     if (params.continuity == true){
         CONTINUITY = RUN_GFSTATS(INPUT)}
     if (params.genecompleteness == true){
@@ -182,17 +285,17 @@ workflow {
     if (params.readcompleteness == true){
         RCOMPLETENESS = RUN_KAT(INPUT)}
     if (params.correctness == true){
-        CORRECTNESS = RUN_INSPECTOR(INPUT)}
-        MAPPINGS = CORRECTNESS.mappings
-//    if (params.cleaness == true){
-//     CLEANESS = CONTAMINATION()}
+        CORRECTNESS = RUN_INSPECTOR(INPUT)
+        MAPPINGS = CORRECTNESS.mappings}
+}
 
-    if (params.all == true){
-                CONTINUITY = RUN_GFSTATS(INPUT)
-                GCOMPLETENESS = RUN_BUSCO(INPUT)
-                RCOMPLETENESS = RUN_KAT(INPUT)
-                CORRECTNESS = RUN_INSPECTOR(INPUT)
-                MAPPINGS = CORRECTNESS.mappings  ///// tuple output ASSEMBLY, BAM 
-                CLEANESS = CONTAMINATION() 
-}
-}
+params.continuity = false
+params.genecompleteness = false
+params.readcompleteness = false
+params.correctness = false
+params.cleaness = false
+params.all = false
+params.mito ="Crenicichla_mitoGenes.fasta"
+params.dtype = 'ont'
+params.mitassembly = false
+params.template2 = "/home/fhenning/assembly_project/lib/nextpolish.cfg"
