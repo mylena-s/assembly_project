@@ -111,7 +111,10 @@ workflow {
 
     if (params.trimmed == false) {
         READS = Channel.fromPath(params.reads, checkIfExists:true)
-        TRIMMED = ADAPTOR_CHECK(READS).reads
+        if (params.type == 'ont') {
+            TRIMMED = ADAPTOR_CHECK(READS).reads}
+        if (params.type == 'hifi') {
+            TRIMMED = CUTADAPT(READS).reads}
     } else {
        READS = channel.empty()    
        TRIMMED = Channel.fromPath(params.reads, checkIfExists:true)
@@ -125,7 +128,7 @@ workflow {
 //    REPORT = GENOMESCOPE(KMER_HIST.hist).genomescope_report
 }
 
-params.type = "ONT"
+params.type = "ont"
 params.kmer = 15
 params.trimmed = false
 params.scrub = false
