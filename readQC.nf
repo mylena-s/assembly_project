@@ -6,6 +6,7 @@ log.info """\
     QC step for reads
 
     Uses NanoPlot to assess read quality
+    porechop and cutadapt for trimming (ont and hifi)
     and Genomescope for pre-assembly assessments
     (genome size, heterozigosity etc)"""
     .stripIndent()
@@ -119,6 +120,18 @@ process CUTADAPT{
     cutadapt -b ATCTCTCTCAACAACAACAACGGAGGAGGAGGAAAAGAGAGAGAT -b ATCTCTCTCTTTTCCTCCTCCTCCGTTGTTGTTGTTGAGAGAGAT -e 0.1 -O 35 --rc --discard-trimmed -j 0 -o ${reads.baseName}_trimmed.fq.gz $reads -j 10
     """
 }
+
+process MULTIQC{
+    label 'multiqc'
+    input:
+    path reports
+    output:
+    path 'multiqc'
+    script:
+    """
+    multiqc .
+    """
+}
 workflow {
     SCRUBBED = channel.empty()    
 
@@ -135,7 +148,7 @@ workflow {
         SCRUBBED = CHIMERA_CHECK(TRIMMED).reads}
 
     READS_CH = READS.concat(READS, TRIMMED, SCRUBBED)
-    QC(READS_CH)
+    NANOPLOT = QC(READS_CH).collect()
 
     if (params.statistics == true){
         KMER_HIST = RUN_JELLYFISH(READS)
