@@ -5,3 +5,4 @@ CBFH00233/
 bin/
 work/
 nextflow
+lib/uniref90.fasta.gz
