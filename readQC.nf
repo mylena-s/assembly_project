@@ -15,13 +15,13 @@ log.info """\
 process QC {
     publishDir "${params.publishDir}/pre_assembly/nanoplot/", mode: 'copy'
     label 'nanoplot'
-    label 'medium_resources'
+    label 'low_resources'
     
     input:
     path reads
 
     output:
-    path 'NanoPlot*', emit: output
+    path 'NanoPlot*', emit: folder
   
     script:
     """
@@ -113,8 +113,8 @@ process CUTADAPT{
 
     input:
     path reads
-    output
-    path '*_trimmed.fq.gz' emit: reads
+    output:
+    path '*_trimmed.fq.gz', emit: reads
     path '*.cutadapt.json', emit: report
     script:
     """
@@ -149,8 +149,8 @@ workflow {
             
         if (params.type == 'hifi') {
             RESULTS = CUTADAPT(READS)}
-            TRIMMED = RESULTS.out.reads
-            REPORTS = RESULTS.out.report.collect()
+            TRIMMED = RESULTS.reads
+            REPORTS = RESULTS.report.collect()
     } else {
         READS = channel.empty()    
         TRIMMED = Channel.fromPath(params.reads, checkIfExists:true)}
@@ -158,7 +158,7 @@ workflow {
         SCRUBBED = CHIMERA_CHECK(TRIMMED).reads}
 
     READS_CH = READS.concat(READS, TRIMMED, SCRUBBED)
-    NANOPLOT = QC(READS_CH).output.collect()
+    NANOPLOT = QC(READS_CH).folder.collect()
 
     if (params.statistics == true){
         KMER_HIST = RUN_JELLYFISH(READS)
