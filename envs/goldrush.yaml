@@ -1,6 +1,6 @@
-name: cutadapt
+name: goldrush
 channels:
   - conda-forge
   - bioconda
 dependencies:
-  - cutadapt
+  - goldrush

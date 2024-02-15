@@ -15,13 +15,13 @@ log.info """\
 process QC {
     publishDir "${params.publishDir}/pre_assembly/nanoplot/", mode: 'copy'
     label 'nanoplot'
-    label 'medium_resources'
+    label 'low_resources'
     
     input:
     path reads
 
     output:
-    path 'NanoPlot*', emit: output
+    path 'NanoPlot*', emit: folder
   
     script:
     """
@@ -32,7 +32,7 @@ process QC {
 process GENOMESCOPE {
     publishDir "${params.publishDir}/pre_assembly/genomescope/", mode: 'copy'    
     label "low_resources"
-    label "genomescope"
+    label "kmertools"
 
     input:
     path hist
@@ -49,6 +49,7 @@ process GENOMESCOPE {
 process RUN_JELLYFISH{
     publishDir "${params.publishDir}/pre_assembly/genomescope/", mode: 'copy'    
     label 'low_resources'
+    label 'kmertools'
 
     input:
     path reads
@@ -110,11 +111,12 @@ process CHIMERA_CHECK {
 process CUTADAPT{
     label 'cutadapt'
     label 'low_resources'
+    publishDir "${params.publishDir}/pre_assembly/trimming/cutadapt/", mode: 'copy'    
 
     input:
     path reads
-    output
-    path '*_trimmed.fq.gz' emit: reads
+    output:
+    path '*_trimmed.fq.gz', emit: reads
     path '*.cutadapt.json', emit: report
     script:
     """
@@ -149,17 +151,17 @@ workflow {
             
         if (params.type == 'hifi') {
             RESULTS = CUTADAPT(READS)}
-            TRIMMED = RESULTS.out.reads
-            REPORTS = RESULTS.out.report.collect()
+            TRIMMED = RESULTS.reads
+            REPORTS = RESULTS.report
     } else {
         READS = channel.empty()    
         TRIMMED = Channel.fromPath(params.reads, checkIfExists:true)}
     if (params.scrub == true) {
         SCRUBBED = CHIMERA_CHECK(TRIMMED).reads}
 
-    READS_CH = READS.concat(READS, TRIMMED, SCRUBBED)
-    NANOPLOT = QC(READS_CH).output.collect()
-
+    READS_CH = READS.concat(TRIMMED, SCRUBBED)
+    NANOPLOT = QC(READS_CH).folder
+    MULTIQC(NANOPLOT.concat(REPORTS))
     if (params.statistics == true){
         KMER_HIST = RUN_JELLYFISH(READS)
         REPORT = GENOMESCOPE(KMER_HIST.hist).genomescope_report}

@@ -29,7 +29,7 @@ process RUN_GFSTATS {
 }
 
 process RUN_KAT {
-    label 'kat'
+    label 'kmertools'
     label 'medium_resources'
     publishDir "${params.publishDir}/assembly/QC/", mode: 'copy', pattern:"02_kat", saveAs: "02_kat_${genome.baseName}"    
     errorStrategy 'ignore'
