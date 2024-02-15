@@ -4,6 +4,7 @@ CBFH00195/
 CBFH00233/
 software/*/
 bin/
+miniforge3/
 work/
 nextflow
 lib/uniref90.fasta.gz
