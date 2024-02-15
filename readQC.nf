@@ -26,6 +26,7 @@ process QC {
     script:
     """
     NanoPlot -t $task.cpus --verbose --huge -o NanoPlot_${reads.baseName} --tsv_stats --raw --fastq $reads
+    cp .command.sh .command.log Nanoplot_${reads.baseName}/
     """
 }
 
@@ -70,7 +71,7 @@ process ADAPTOR_CHECK {
     label 'porechop'
     label 'medium_resources'
     errorStrategy 'ignore'
-    publishDir "${params.publishDir}/pre_assembly/trimming/", mode: 'copy'    
+    publishDir "${params.publishDir}/pre_assembly/trimming/porechop", mode: 'copy'    
 
 
     input:
@@ -118,6 +119,8 @@ process CUTADAPT{
     output:
     path '*_trimmed.fq.gz', emit: reads
     path '*.cutadapt.json', emit: report
+    path '.command.*'
+
     script:
     """
     cutadapt -b ATCTCTCTCAACAACAACAACGGAGGAGGAGGAAAAGAGAGAGAT \
@@ -129,6 +132,8 @@ process CUTADAPT{
 }
 
 process MULTIQC{
+    publishDir "${params.publishDir}/pre_assembly/", mode: 'copy'    
+
     label 'multiqc'
     input:
     path reports
