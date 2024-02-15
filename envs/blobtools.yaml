@@ -1,8 +1,10 @@
 name: blobtools
 channels:
+  - bioconda
   - conda-forge
 dependencies:
   - python=3.9
   - pip
   - pip:
     - blobtoolkit[full]
+  - diamond

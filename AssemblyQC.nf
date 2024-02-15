@@ -80,7 +80,7 @@ process RUN_INSPECTOR {
 
 
     output:
-    path '03_inspector_out*/'
+    path "03_inspector_out_${genome.baseName}/"
     path '03_inspector_out*/read_to_contig.bam.gz', emit: mappings
 
     
@@ -92,21 +92,27 @@ process RUN_INSPECTOR {
     """
 }
 
-process BLAST {
+process DBLAST {
     label 'resource_intensive'
-    
+    label 'blobtools'
+
     input:
     path genome
-
     val db
 
     output
-    path ' blobtools_blast.out', emit: blastout
+    path '*_uniref90.out', emit: blastout
 
     script:
     """
-    blastn -query $genome -db $db -outfmt "6 qseqid staxids bitscore std" -num_threads $task.cpus -evalue 1e-25 \
-    -max_target_seqs 10 -max_hsps 1 -out blobtools_blast.out
+    cp $params.db uniref90.fasta.gz
+    gunzip uniref90.fasta.gz
+    diamond makedb --in $db --db uniref90
+    diamond blastx --query $genome --db uniref90 \
+    --outfmt 6 --sensitive --max-target-seqs 1 \
+    --evalue 1e-25 --thread $task.cpus --out ${genome.baseName}_uniref90.out
+    rm uniref90.fasta
+    blobtools taxify -f ${genome.baseName}_uniref90.out -m $params.taxid -s 0 -t 1
 """
 }
 
@@ -192,9 +198,10 @@ workflow CONTAMINATION {
             MAPPINGS = MINIMAP(READS, ASSEMBLIES) // tuple output ASSEMBLY, BAM
             }
         else {
-            MAPPINGS.ifEmpty{MAPPINGS = MINIMAP(READS, ASSEMBLIES)}}
+            MAPPINGS.Channel.fromPath(params.mapped)
+            MAPPINGS.ifEmpty{MAPPINGS = MINIMAP(READS, ASSEMBLIES)}} 
 
-        BLOBINPUT = BLAST(MAPPINGS).blastout // tuple input ASSEMBLY, BAM // output tuple ASSEMBLY, BAM, BLASTOUT     
+        BLOBINPUT = DBLAST(MAPPINGS).blastout // tuple input ASSEMBLY, BAM // output tuple ASSEMBLY, BAM, BLASTOUT     
         BLOB = RUN_BLOBTOOLS(BLOBINPUT) // TUPLE INPUT; END
 }
 
@@ -287,6 +294,9 @@ workflow {
     if (params.correctness == true){
         CORRECTNESS = RUN_INSPECTOR(INPUT)
         MAPPINGS = CORRECTNESS.mappings}
+    if (params.cleaness ==true){
+        CLEANESS = CONTAMINATION(READS, ASSEMBLIES, MAPPINGS)
+    }
 }
 
 params.continuity = false
@@ -299,3 +309,5 @@ params.mito ="Crenicichla_mitoGenes.fasta"
 params.dtype = 'ont'
 params.mitassembly = false
 params.template2 = "/home/fhenning/assembly_project/lib/nextpolish.cfg"
+params.taxid = "/home/fhenning/assembly_project/lib/uniref.taxid.tsv"
+params.db = "/home/fhenning/assembly_project/lib/uniref90.fasta.gz"
