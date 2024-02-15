@@ -108,10 +108,23 @@ process POLISH {
 }
 
 process  ASSEMBLY_HIFI {
-    label 'hifiasm'
-    script:
-    """
+    label 'resource_intensive'
+    publishDir "${params.publishDir}/assembly/hifiasm/", mode: 'copy'
 
+    input:
+    path reads
+    path ul 
+
+    output:
+    path "hifiasm"
+    
+    script:
+    def filter = ul != 'NO_FILE' ? "--ul $ul" : ''
+    """
+    hifiasm -o ${reads.baseName}.asm -t $task.cpus $filter $reads
+    mkdir hifiasm 
+    mv ${reads.baseName}.asm* hifiasm
+    mv .command* hifiasm
     """
 }
 
@@ -213,10 +226,11 @@ params.type = "nanopore"
 params.gs = 900
 params.db = '/home/fhenning/assembly_project/lib/actinopterygii_odb10.tar.gz'
 params.nreads = 2
-
+params.ul = "NO_FILE"
 
 workflow {
     READS = Channel.fromPath(params.reads, checkIfExists:true) 
+    UL = Channel.fromPath(params.ul, checkIfExists:false)
     if (params.assemble != false) {
         if (params.type == "nanopore") {
             CONFIG = PREPARE_CONFIG(params.template1)
@@ -229,7 +243,7 @@ workflow {
             ASSEMBLIES = PRIMARY.concat(BREAKTIGS, HAPLOTIGS, SCAFFOLD, POLISHED)
 
         } else {
-            PRIMARY = ASSEMBLY_HIFI()
+            PRIMARY = ASSEMBLY_HIFI(READS, UL)
         }
     }
     // or read assembly/ies to do QC
@@ -238,6 +252,4 @@ workflow {
         
     }
     INPUT = READS.combine(ASSEMBLIES)
-
-
 }

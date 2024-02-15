@@ -7,3 +7,7 @@ cd ../software
 git clone https://github.com/tbenavi1/genomescope2.0.git
 cd genomescope2.0/
 Rscript install.R
+# install hifiasm 
+git clone https://github.com/chhylp123/hifiasm
+cd hifiasm && make
+cd ../../bin & ../software/hifiasm/hifiasm
