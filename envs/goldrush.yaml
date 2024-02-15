@@ -1,0 +1,6 @@
+name: goldrush
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - goldrush

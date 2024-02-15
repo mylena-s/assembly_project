@@ -1,0 +1,6 @@
+name: haplotigs
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - purge_haplotigs

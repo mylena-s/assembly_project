@@ -1,0 +1,9 @@
+name: nextpolish
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - pip
+  - pip:
+    - paralleltask
+  - nextpolish
