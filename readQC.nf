@@ -26,7 +26,7 @@ process QC {
     script:
     """
     NanoPlot -t $task.cpus --verbose --huge -o NanoPlot_${reads.baseName} --tsv_stats --raw --fastq $reads
-    cp .command.sh .command.log Nanoplot_${reads.baseName}/
+    cp .command.sh .command.log NanoPlot_${reads.baseName}/
     """
 }
 
