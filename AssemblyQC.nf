@@ -116,22 +116,6 @@ process DBLAST {
 """
 }
 
-process MINIMAP{
-    label 'medium_resources'
-    label 'inspector'
-
-    input:
-    path genome
-    path reads
-
-    output:
-    path 'read_to_contig.bam', emit: mappings
-
-    script:
-    """minimap2 -ax map-$params.dtype $genome $reads | samtools sort -@$task.cpus -O BAM -o read_to_contig.bam -
-    """
-}
-
 process RUN_BLOBTOOLS {
     label 'medium_resources'
     label 'blobtools'
@@ -194,6 +178,8 @@ workflow CONTAMINATION {
         ASSEMBLIES
         MAPPINGS // puede estar vacio
     main:
+        include { MINIMAP } from './modules/minimap.nf'
+        
         if (mapped == false){
             MAPPINGS = MINIMAP(READS, ASSEMBLIES) // tuple output ASSEMBLY, BAM
             }
