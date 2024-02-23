@@ -1,0 +1,5 @@
+name: qualimap
+channels:
+  - bioconda
+dependencies:
+  - qualimap

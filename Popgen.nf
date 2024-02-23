@@ -28,7 +28,9 @@ workflow {
     } else {
         MAPPINGS_NODUP = Channel.fromPath(params.nodup, checkIfExists:true) }
         COLLECTED_MAPPINGS = MAPPINGS_NODUP.collect() 
+    BAMQC(MAPPINGS_NODUP)
     FREEBAYES_JOINT(ASSEMBLY, COLLECTED_MAPPINGS)
+
 }
 
 

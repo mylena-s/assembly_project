@@ -41,6 +41,7 @@ process MARKDUP{
 process BAMQC {
     publishDir "${params.publishDir}/population/alignment/QC", mode: 'copy'    
     label 'low_resources'
+    label 'qualimap'
 
     input:
     path bam
@@ -56,7 +57,7 @@ process BAMQC {
 process FREEBAYES_JOINT{
     label 'medium_resources'
     publishDir "${params.publishDir}/population/SNP_variant_calling", mode: 'copy'   
-    label 'freebayes'
+    label 'minimap'
     
     input:
     path(genome)
