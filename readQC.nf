@@ -166,7 +166,7 @@ workflow {
 
     READS_CH = READS.concat(TRIMMED, SCRUBBED)
     NANOPLOT = QC(READS_CH).folder
-    MULTIQC(NANOPLOT.concat(REPORTS))
+//   MULTIQC(NANOPLOT.collect(REPORTS))
     if (params.statistics == true){
         KMER_HIST = RUN_JELLYFISH(READS)
         REPORT = GENOMESCOPE(KMER_HIST.hist).genomescope_report}
