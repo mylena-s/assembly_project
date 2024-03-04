@@ -39,16 +39,16 @@ process GENOMESCOPE {
     path hist
 
     output:
-    path 'report',      emit: genomescope_report
+    path 'report_*',      emit: genomescope_report
   
     script:
     """
-    genomescope.R -i $hist -o report -k $params.kmer 
+    genomescope2 -i $hist -o report_k${params.kmer} -k $params.kmer
+    mv .command* report_k${params.kmer} 
     """
 }
 
 process RUN_JELLYFISH{
-    publishDir "${params.publishDir}/pre_assembly/genomescope/", mode: 'copy'    
     label 'low_resources'
     label 'kmertools'
 
@@ -151,8 +151,8 @@ workflow {
         READS = Channel.fromPath(params.reads, checkIfExists:true)
         if (params.type == 'ont') {
             RESULTS = ADAPTOR_CHECK(READS)
-            TRIMMED = RESULTS.out.reads
-            REPORTS = RESULTS.report.out.collect()}
+            TRIMMED = RESULTS.reads
+            REPORTS = RESULTS.report.collect()}
             
         if (params.type == 'hifi') {
             RESULTS = CUTADAPT(READS)}
@@ -165,15 +165,18 @@ workflow {
         SCRUBBED = CHIMERA_CHECK(TRIMMED).reads}
 
     READS_CH = READS.concat(TRIMMED, SCRUBBED)
-    NANOPLOT = QC(READS_CH).folder
-//   MULTIQC(NANOPLOT.collect(REPORTS))
+    if (params.qc == true){
+        NANOPLOT = QC(READS_CH).folder
+        //MULTIQC(NANOPLOT.collect(REPORTS))
+}
     if (params.statistics == true){
-        KMER_HIST = RUN_JELLYFISH(READS)
+        KMER_HIST = RUN_JELLYFISH(READS_CH)
         REPORT = GENOMESCOPE(KMER_HIST.hist).genomescope_report}
 }
 
 params.type = "ont"
-params.kmer = 21
+params.kmer = 31
 params.trimmed = false
 params.scrub = false
+params.qc = true
 params.statistics = false
