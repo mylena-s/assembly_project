@@ -130,17 +130,18 @@ process  ASSEMBLY_HIFI {
 
 process ASSEMBLY_HIBRID{
     label 'verkko'
+    label 'resource_intensive'
+    publishDir "${params.publishDir}/assembly/verkko/", mode: 'copy'
 
     input:
-    path ONT_reads
-    path HIFI_reads // must create a dummy file for this
+    tuple path(ONT_reads), path(HIFI_reads)
     
     output:
-    path genome
+    path "asm"
     
     script:
     """
-    verkko -d $PWD --hifi $HIFI_reads --nano $ONT_reads
+    verkko -d $PWD --hifi $HIFI_reads --nano $ONT_reads --local-cpus $task.cpus
     """
 }
 
@@ -222,7 +223,7 @@ process PURGE_HAPLOTIGS {
 params.template1 = "/home/fhenning/assembly_project/lib/nextdenovo.cfg"
 params.template2 = "/home/fhenning/assembly_project/lib/nextpolish.cfg"
 params.assemble = false 
-params.type = "nanopore" 
+params.type = "ont" 
 params.gs = 900
 params.db = '/home/fhenning/assembly_project/lib/actinopterygii_odb10.tar.gz'
 params.nreads = 2
@@ -232,7 +233,7 @@ workflow {
     READS = Channel.fromPath(params.reads, checkIfExists:true) 
     UL = Channel.fromPath(params.ul, checkIfExists:false)
     if (params.assemble != false) {
-        if (params.type == "nanopore") {
+        if (params.type == "ont") {
             CONFIG = PREPARE_CONFIG(params.template1)
             PRIMARY = ASSEMBLY_ONT(READS,CONFIG).assembly
             BREAKTIGS = BREAK_MISSASSEM(PRIMARY, READS).output
@@ -243,13 +244,12 @@ workflow {
             ASSEMBLIES = PRIMARY.concat(BREAKTIGS, HAPLOTIGS, SCAFFOLD, POLISHED)
 
         } else {
-            PRIMARY = ASSEMBLY_HIFI(READS, UL)
-        }
+            if (params.type == "hifi"){
+                PRIMARY = ASSEMBLY_HIFI(READS, UL)
+            } else {
+                INPUT = UL.combine(READS)
+                PRIMARY = ASSEMBLY_HIBRID(INPUT)
+            }
     }
-    // or read assembly/ies to do QC
-    if (params.assemble == false) {
-        ASSEMBLIES = Channel.fromPath(params.genome, checkIfExists: true)
-        
     }
-    INPUT = READS.combine(ASSEMBLIES)
 }
