@@ -12,6 +12,28 @@ include { MINIMAP; BAMQC; FREEBAYES_JOINT; MARKDUP } from './modules/minimap.nf'
 params.dtype = "hifi"
 params.mapped = false
 params.nodup = false
+
+process JOIN_VCF {
+    label 'low_resources'
+    label 'minimap'
+    publishDir "${params.publishDir}/population/SNP_variant_calling", mode: 'copy'   
+
+    input:
+    path(vcfs)
+
+    output:
+    path "all_jointcall.vcf.gz"
+    path "concat.command.*"
+
+    script:
+    def files = vcfs.join(' ')
+    """
+    bcftools concat $files > all_jointcall.vcf
+    bgzip all_jointcall.vcf
+    mv .command.sh concat.command.sh
+    mv .command.log concat.command.log
+    """
+}
 workflow {
     READS = Channel.fromPath(params.reads, checkIfExists:true) 
     ASSEMBLY = Channel.fromPath(params.genome, checkIfExists: true)    
@@ -28,9 +50,15 @@ workflow {
     } else {
         MAPPINGS_NODUP = Channel.fromPath(params.nodup, checkIfExists:true) }
         COLLECTED_MAPPINGS = MAPPINGS_NODUP.collect() 
-    BAMQC(MAPPINGS_NODUP)
-    FREEBAYES_JOINT(ASSEMBLY, COLLECTED_MAPPINGS)
-
+//    BAMQC(MAPPINGS_NODUP)
+    contigs_file = file(params.contigs)
+    allcontigs = Channel.fromList(contigs_file.readLines())
+    GENOME_CONTIG = ASSEMBLY.combine(allcontigs)
+    if (params.vcfs == false) {
+        VCFS = FREEBAYES_JOINT(GENOME_CONTIG, COLLECTED_MAPPINGS).vcf.collect()
+    } else {
+        VCFS = Channel.fromPath(params.vcfs, checkIfExists: true).collect()}   
+    ALL_VCF = JOIN_VCF(VCFS)
 }
 
 

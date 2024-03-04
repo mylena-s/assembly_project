@@ -3,6 +3,7 @@ process MINIMAP{
     publishDir "${params.publishDir}/population/alignment", mode: 'copy'   
     label 'medium_resources'
     label 'minimap'
+    maxForks 10
 
     input:
     tuple path(genome), path(reads)
@@ -55,22 +56,25 @@ process BAMQC {
     """
 }
 process FREEBAYES_JOINT{
-    label 'medium_resources'
+    label 'low_resources'
     publishDir "${params.publishDir}/population/SNP_variant_calling", mode: 'copy'   
     label 'minimap'
-    
+    maxForks 10
+
     input:
-    path(genome)
+    tuple path(genome), val(sequence_id)
     val(bams)
 
     output:
-    path "*_jointcall.vcf.gz"
+    path "*_jointcall.vcf", emit: vcf
+    path "jointcall.command.*"
 
     script:
     def files = bams.join(' ')
     """ls $files > bam_list
-    freebayes -f $genome -L bam_list --gvcf -g 100 --ploidy 2 > ${genome.baseName}_jointcall.vcf
-    bgzip *_jointcall.vcf
+    freebayes -f $genome -L bam_list --gvcf -g 100 --ploidy 2 -r $sequence_id > ${genome.baseName}_${sequence_id}_jointcall.vcf
+    mv .command.sh jointcall.command.sh
+    mv .command.log jointcall.command.log
     """
 }   
 

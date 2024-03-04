@@ -30,3 +30,17 @@ cd htslib
 make
 make install
 cd ../../bin & ln -s ../software/htslib/bgzip .
+
+# install vt
+git clone https://github.com/atks/vt.git
+#change directory to vt
+cd vt
+#update submodules
+git submodule update --init --recursive
+#run make, note that compilers need to support the c++0x standard
+make
+#you can test the build
+make test
+cd ../../bin 
+ln -s ../software/vt/vt .
+cd ../software

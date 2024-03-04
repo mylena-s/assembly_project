@@ -6,3 +6,5 @@ dependencies:
   - minimap2=2.26
   - samtools
   - bamaddrg
+  - bcftools
+  - vcflib
