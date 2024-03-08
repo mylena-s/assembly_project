@@ -127,21 +127,35 @@ process  ASSEMBLY_HIFI {
     mv .command* hifiasm
     """
 }
+process SAMPLE_ONT {
+    label 'low_resources'
+    label 'nanoplot'
+
+    input:
+    path reads
+    output:
+    path "*50Kb.fastq.gz", emit:reads
+    script:
+    """gunzip -c $reads | NanoFilt -l 50000 | pigz > ${reads.baseName}_50Kb.fastq.gz"""
+
+}
 
 process ASSEMBLY_HIBRID{
     label 'verkko'
     label 'resource_intensive'
-    publishDir "${params.publishDir}/assembly/verkko/", mode: 'copy'
+    publishDir "${params.publishDir}/assembly/", mode: 'copy'
 
     input:
     tuple path(ONT_reads), path(HIFI_reads)
     
     output:
-    path "asm"
+    path "verkko", emit: folder
+    path "verkko/"
     
     script:
     """
-    verkko -d $PWD --hifi $HIFI_reads --nano $ONT_reads --local-cpus $task.cpus
+    verkko -d ./verkko --hifi $HIFI_reads --nano $ONT_reads --local-cpus $task.cpus
+    cp .command* verkko
     """
 }
 
@@ -247,7 +261,8 @@ workflow {
             if (params.type == "hifi"){
                 PRIMARY = ASSEMBLY_HIFI(READS, UL)
             } else {
-                INPUT = UL.combine(READS)
+                ONT=SAMPLE_ONT(UL).reads
+                INPUT = ONT.combine(READS)
                 PRIMARY = ASSEMBLY_HIBRID(INPUT)
             }
     }

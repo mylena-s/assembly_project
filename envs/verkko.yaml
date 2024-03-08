@@ -1,8 +1,7 @@
-name: nanoplot
+name: verkko
 channels:
   - conda-forge
   - bioconda
   - defaults
 dependencies:
-  - nanoplot
-  - nanofilt
+  - verkko
