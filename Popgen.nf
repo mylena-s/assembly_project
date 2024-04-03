@@ -34,11 +34,57 @@ process JOIN_VCF {
     mv .command.log concat.command.log
     """
 }
-workflow {
-    READS = Channel.fromPath(params.reads, checkIfExists:true) 
+
+process MITOHIFI{
+    label 'medium_resources'
+    label 'mitohifi'
+    errorStrategy 'ignore'
+
+    publishDir "${params.publishDir}/population/mitochondrial", mode: 'copy'   
+
+    input:
+    path read
+    val reference
+
+    output:
+    path "*final_mitogenome.*"
+    path ".*command.*"
+    
+    script:
+    """
+    mitohifi.py -r $read -f ${reference}.fasta -g ${reference}.gb -t $task.cpus -a animal 
+    mv final_mitogenome.fasta ${reference}.final_mitogenome.fasta
+    mv final_mitogenome.gb ${reference}.final_mitogenome.gb
+    mv .command.log .${reference}.command.log
+    mv .command.sh .${reference}.command.sh
+    """
+}
+
+reference = "$projectDir/lib/NC_030272.1"
+params.assembled_mito = false
+
+workflow MITO {
+    take:
+    READS
+    main:
+    if (params.assembled_mito == false){
+        MITOCONDRIAS = MITOHIFI(READS,reference)}
+    else {
+        MITOCONDRIAS = Channel.fromPath(params.assembled_mito)}
+    // ALIGN
+    // 
+    }
+
+
+workflow NUCLEAR {    
+    take:
+    READS
+
+    main:
     ASSEMBLY = Channel.fromPath(params.genome, checkIfExists: true)    
-    INPUT = ASSEMBLY.combine(READS)  
+    INPUT = ASSEMBLY.combine(READS)
     COLLECTED_MAPPINGS = channel.empty()
+
     if (params.mapped == false) {
         MAPPINGS = MINIMAP(INPUT).mappings
     } else {
@@ -62,3 +108,10 @@ workflow {
 }
 
 
+workflow {
+    READS = Channel.fromPath(params.reads, checkIfExists:true)
+    // NUCLEAR(READS)
+    MITO(READS)
+    }
+    
+    

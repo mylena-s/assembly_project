@@ -44,3 +44,7 @@ make test
 cd ../../bin 
 ln -s ../software/vt/vt .
 cd ../software
+
+# mitohifi
+singularity pull mitohifi.sif docker://ghcr.io/marcelauliano/mitohifi:master
+
