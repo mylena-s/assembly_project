@@ -44,3 +44,10 @@ make test
 cd ../../bin 
 ln -s ../software/vt/vt .
 cd ../software
+
+#install purge_dups
+git clone https://github.com/dfguan/purge_dups.git
+cd purge_dups/src && make
+cd ../../bin
+ln -s ../software/purge_dups/bin/* .
+cd ../software
