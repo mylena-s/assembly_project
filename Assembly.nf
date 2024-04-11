@@ -109,7 +109,7 @@ process POLISH {
 
 process  ASSEMBLY_HIFI {
     label 'resource_intensive'
-    publishDir "${params.publishDir}/assembly/hifiasm/", mode: 'copy'
+    publishDir "${params.publishDir}/assembly/hifiasm/", mode: 'copy', pattern: "hifiasm/"
 
     input:
     path reads
@@ -117,6 +117,7 @@ process  ASSEMBLY_HIFI {
 
     output:
     path "hifiasm"
+    path "hifiasm/*asm.bp.p_ctg.gfa.fasta", emit: assembly
     
     script:
     def filter = ul != 'NO_FILE' ? "--ul $ul" : ''
@@ -125,6 +126,8 @@ process  ASSEMBLY_HIFI {
     mkdir hifiasm 
     mv ${reads.baseName}.asm* hifiasm
     mv .command* hifiasm
+    cd hifiasm
+    for file in *gfa; do gfastats $file -o fa --discover-paths > $file'.fasta'
     """
 }
 process SAMPLE_ONT {
@@ -212,31 +215,31 @@ process SCAFFOLDING {
 process PURGE_HAPLOTIGS {
     label 'haplotigs'
     label 'medium_resources'
-    publishDir "${params.publishDir}/assembly/", mode: 'copy'    
+    publishDir "${params.publishDir}/assembly/", mode: 'copy'
 
     input:
     path genome
     path reads
+    val type
 
     output:
-    path "haplotigs_out"
-    path "haplotigs_out/curated.fasta", emit: curated
+    path "haplotigs_out_${val}"
+    path "haplotigs_out_${val}/curated.fasta", emit: curated
 
     script:
     """
-    minimap2 -ax map-ont $genome $reads --secondary=no | samtools sort -o mapping_LR.map-ont.bam -T tmp.ali
-    purge_haplotigs hist -b mapping_LR.map-ont.bam  -g $genome  -t $task.cpus
-    purge_haplotigs cov -i mapping_LR.map-ont.bam.gencov -l 5 -m 190 -h 190 -o coverage_stats.csv -j 190 -s 80
-    purge_haplotigs purge -g $genome -c coverage_stats.csv -t $task.cpus -d -b mapping_LR.map-ont.bam
+    minimap2 -ax map-$type $genome $reads --secondary=no | samtools sort -o mapping_LR.map-${type}.bam -T tmp.ali
+    purge_haplotigs hist -b mapping_LR.map-${type}.bam  -g $genome  -t $task.cpus
+    purge_haplotigs cov -i mapping_LR.map-${type}.200.bam.gencov -l 5 -m 190 -h 190 -o coverage_stats.csv -j 190 -s 80
+    purge_haplotigs purge -g $genome -c coverage_stats.csv -t $task.cpus -d -b mapping_LR.map-${type}.bam
     mkdir haplotigs_out
-    mv curated* coverage_stats.csv dotplots* mapping_LR.map-ont.bam.* haplotigs_out
-    cp .command.sh .command.log haplotigs_out"""
+    mv curated* coverage_stats.csv dotplots* mapping_LR.map-${type}.bam.* haplotigs_out
+    cp .command.sh .command.log haplotigs_out_${type}"""
 }
-
 
 params.template1 = "/home/fhenning/assembly_project/lib/nextdenovo.cfg"
 params.template2 = "/home/fhenning/assembly_project/lib/nextpolish.cfg"
-params.assemble = false 
+params.assembled = false 
 params.type = "ont" 
 params.gs = 900
 params.db = '/home/fhenning/assembly_project/lib/actinopterygii_odb10.tar.gz'
@@ -246,12 +249,12 @@ params.ul = "NO_FILE"
 workflow {
     READS = Channel.fromPath(params.reads, checkIfExists:true) 
     UL = Channel.fromPath(params.ul, checkIfExists:false)
-    if (params.assemble != false) {
+    if (params.assembled == false) {
         if (params.type == "ont") {
             CONFIG = PREPARE_CONFIG(params.template1)
             PRIMARY = ASSEMBLY_ONT(READS,CONFIG).assembly
             BREAKTIGS = BREAK_MISSASSEM(PRIMARY, READS).output
-            HAPLOTIGS = PURGE_HAPLOTIGS(BREAKTIGS, READS).curated
+            HAPLOTIGS = PURGE_HAPLOTIGS(BREAKTIGS, READS, "ont").curated
             SCAFFOLD = SCAFFOLDING(HAPLOTIGS, READS).scaffolded_genome
             config = MAKECFG(SCAFFOLD).config_file
             POLISHED = POLISH(config, READS).assembly
@@ -259,12 +262,19 @@ workflow {
 
         } else {
             if (params.type == "hifi"){
-                PRIMARY = ASSEMBLY_HIFI(READS, UL)
+                PRIMARY = ASSEMBLY_HIFI(READS, UL).assembly
+                HAPLOTIGS = PURGE_HAPLOTIGS(PRIMARY, READS, params.type)
+
             } else {
                 ONT=SAMPLE_ONT(UL).reads
                 INPUT = ONT.combine(READS)
                 PRIMARY = ASSEMBLY_HIBRID(INPUT)
             }
     }
+    }
+    else {
+        PRIMARY = Channel.fromPath(params.assembled)
+        HAPLOTIGS = PURGE_HAPLOTIGS(PRIMARY, READS, params.type)
+
     }
 }
