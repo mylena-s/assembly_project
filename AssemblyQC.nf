@@ -31,7 +31,7 @@ process RUN_GFSTATS {
 process RUN_KAT {
     label 'kmertools'
     label 'medium_resources'
-    publishDir "${params.publishDir}/assembly/QC/", mode: 'copy', pattern:"02_kat", saveAs: "02_kat_${genome.baseName}"    
+    publishDir "${params.publishDir}/assembly/QC/", mode: 'copy'
     errorStrategy 'ignore'
 
     input:
@@ -43,10 +43,9 @@ process RUN_KAT {
 
     script:
     """kat comp $reads $genome -o kat -t $task.cpus
-    mkdir 02_kat
-    mv .command.* 02_kat
-    mv kat* 02_kat
-    cp .command.sh .command.log 02_kat
+    mkdir 02_kat_${genome.baseName}
+    cp .command.* 02_kat_${genome.baseName}
+    mv kat* 02_kat_${genome.baseName}
     """
 }
 
@@ -66,6 +65,7 @@ process RUN_BUSCO {
 
     """
     busco -i $genome -l actinopterygii_odb10 -o 01_busco_out_${genome.baseName} -m genome -c $task.cpus
+    generate_plot.py -wd 01_busco_out_${genome.baseName}
     cp .command.* 01_busco_out_${genome.baseName} 
     """
 }
@@ -80,15 +80,15 @@ process RUN_INSPECTOR {
 
 
     output:
-    path "03_inspector_out_${genome.baseName}/"
-    path '03_inspector_out*/read_to_contig.bam.gz', emit: mappings
+    path "03_inspector_out_*/"
+    path '03_inspector_out_*/read_to_contig.bam.gz', emit: mappings
 
     
     script:
     """inspector.py -c $genome -r $reads -o 03_inspector_out_${genome.baseName} --datatype $params.dtype --thread $task.cpus --min_contig_length_assemblyerror 10000
-    pigz 03_inspector_out*/read_to_contig.bam
-    rm -r 03_inspector_out*/*_workspace
-    cp .command.sh .command.log 03_inspector_out*/
+    pigz 03_inspector_out_${genome.baseName}/read_to_contig.bam
+    rm -r 03_inspector_out_${genome.baseName}/*_workspace
+    cp .command.sh .command.log 03_inspector_out_${genome.baseName}/
     """
 }
 
