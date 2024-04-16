@@ -230,11 +230,11 @@ process PURGE_HAPLOTIGS {
     """
     minimap2 -ax map-$type $genome $reads --secondary=no | samtools sort -o mapping_LR.map-${type}.bam -T tmp.ali
     purge_haplotigs hist -b mapping_LR.map-${type}.bam  -g $genome  -t $task.cpus
-    purge_haplotigs cov -i mapping_LR.map-${type}.200.bam.gencov -l 5 -m 190 -h 190 -o coverage_stats.csv -j 190 -s 80
+    purge_haplotigs cov -i mapping_LR.map-${type}.bam.200.gencov -l 5 -m 190 -h 190 -o coverage_stats.csv -j 190 -s 80
     purge_haplotigs purge -g $genome -c coverage_stats.csv -t $task.cpus -d -b mapping_LR.map-${type}.bam
-    mkdir haplotigs_out
-    mv curated* coverage_stats.csv dotplots* mapping_LR.map-${type}.bam.* haplotigs_out
-    cp .command.sh .command.log haplotigs_out_${type}"""
+    mkdir haplotigs_out_${genome.baseName}
+    mv curated* coverage_stats.csv dotplots* mapping_LR.map-${type}.bam* haplotigs_out_${genome.baseName}
+    cp .command.sh .command.log haplotigs_out_${genome.baseName}"""
 }
 
 params.template1 = "/home/fhenning/assembly_project/lib/nextdenovo.cfg"
