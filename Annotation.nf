@@ -15,24 +15,43 @@ log.info """\
 process REPEAT_ANNOT {
     label 'earlGrey'
     label 'resource_intensive'
-    publishDir "${params.publishDir}/annotation/", mode: 'copy', pattern: "*01_earlGrey"
+    publishDir "${params.publishDir}/annotation/", mode: 'copy'
     
     input:
     path genome
 
     output:
-    path '01_earlGrey*'
+    path '01_earlGrey_*'
 
     script:
     """
-    earlGrey -g $genome -s "" -o ./01_earlGrey -t $task.cpus
-    mv .command.log .command.sh 01_earlGrey
+    earlGrey -g $genome -s "" -o ./01_earlGrey_${genome.baseName} -t $task.cpus
+    mv .command.log .command.sh 01_earlGrey_${genome.baseName}
     """
 }    
+params.proteins = "lib/Actinopterygii.fasta.gz" 
 
-params.gs = 900
+process BRAKER2 { 
+    label 'braker'
+    label 'resource_intensive'
+    publishDir "${params.publishDir}/annotation/", mode: 'copy'
+    
+    input:
+    path genome
+    path proteins
+
+    output:
+    script:
+    """
+    gunzip -c $proteins > proteins.fa
+    braker.pl --species=Crenicichla --genome=$genome --prot_seq=proteins.fa --workingdir=braker2_${genome.baseName} --threads=$task.cpus --busco_lineage=actinopterygii_odb10
+    """
+}
+
 
 workflow {
     ASSEMBLIES = Channel.fromPath(params.genome, checkIfExists: true)
-    ANNOT = REPEAT_ANNOT(ASSEMBLIES)
+    REFPROT = Channel.fromPath(params.proteins,  checkIfExists: true)
+    INPUT = ASSEMBLIES.combine(REFPROT)
+    ANNOT = REPEAT_ANNOT(INPUT)
 }

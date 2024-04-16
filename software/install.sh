@@ -45,9 +45,14 @@ cd ../../bin
 ln -s ../software/vt/vt .
 cd ../software
 
-#install purge_dups
+# install purge_dups #### not used
 git clone https://github.com/dfguan/purge_dups.git
 cd purge_dups/src && make
 cd ../../bin
 ln -s ../software/purge_dups/bin/* .
+cd ../software
+
+# download simplifyheaders from braker pipeline
+cd ../bin/ & wget http://bioinf.uni-greifswald.de/bioinf/downloads/simplifyFastaHeaders.pl
+chmod +x simplifyFastaHeaders.pl 
 cd ../software
