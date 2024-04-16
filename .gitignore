@@ -1,5 +1,6 @@
 .snakemake
 bk
+lib/Actinopterygii.fasta.gz
 lib/Vertebrata.fa.gz
 .token
 .nextflow*
