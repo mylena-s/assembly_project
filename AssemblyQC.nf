@@ -12,8 +12,6 @@ log.info """\
 process RUN_GFSTATS {
     label 'low_resources'
     publishDir "${params.publishDir}/assembly/QC/00_gfstats_${genome.baseName}/", mode: 'copy'
-    publishDir "${params.publishDir}/assembly/QC/00_gfstats_${genome.baseName}/", mode: 'copy'
-    publishDir "${params.publishDir}/assembly/QC/00_gfstats_${genome.baseName}/", mode: 'copy'
     
     input:
     tuple path(reads), path(genome)
@@ -39,7 +37,7 @@ process RUN_KAT {
 
 
     output:
-    path "02_kat*"
+    path "02_kat_${genome.baseName}"
 
     script:
     """kat comp $reads $genome -o kat -t $task.cpus
@@ -73,15 +71,15 @@ process RUN_BUSCO {
 process RUN_INSPECTOR {
     label 'inspector'
     label 'resource_intensive'
-    publishDir "${params.publishDir}/assembly/QC/", mode: 'copy', pattern:"03_inspector_out*/"
+    publishDir "${params.publishDir}/assembly/QC/", mode: 'copy'
    
     input:
     tuple path(reads), path(genome)
 
 
     output:
-    path "03_inspector_out_*/"
-    path '03_inspector_out_*/read_to_contig.bam.gz', emit: mappings
+    path "03_inspector_out_${genome.baseName}"
+    path "03_inspector_out_${genome.baseName}", emit: mappings
 
     
     script:
