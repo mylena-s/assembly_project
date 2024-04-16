@@ -6,9 +6,10 @@ lib/Vertebrata.fa.gz
 .nextflow*
 CBFH00195/
 CBFH00233/
-software/*/
+software/*
 bin/
 miniforge3/
 work/
 nextflow
 lib/uniref90.fasta.gz
+lib/nt

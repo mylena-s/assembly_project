@@ -34,11 +34,62 @@ process JOIN_VCF {
     mv .command.log concat.command.log
     """
 }
-workflow {
-    READS = Channel.fromPath(params.reads, checkIfExists:true) 
+
+process MITOHIFI{
+    label 'medium_resources'
+    label 'mitohifi'
+    errorStrategy 'ignore'
+
+    publishDir "${params.publishDir}/population/mitochondrial", mode: 'copy'   
+
+    input:
+    path read
+    val reference
+
+    output:
+    path "*final_mitogenome.*"
+    path "${name}.final_mitogenome.fasta", emit: genome
+    path ".*command.*"
+
+
+    script:
+    def name = "${read.baseName}".replaceAll(".fastq","")
+    """
+    mitohifi.py -r $read -f ${reference}.fasta -g ${reference}.gb -t $task.cpus -a animal 
+    sed 's/>/>$name /g' final_mitogenome.fasta > ${name}.final_mitogenome.fasta
+    mv final_mitogenome.gb ${name}.final_mitogenome.gb
+    mv .command.log .${name}.command.log
+    mv .command.sh .${name}.command.sh
+    """
+}
+
+reference = "$projectDir/lib/NC_030272.1"
+params.assembled_mito = false
+
+workflow MITO {
+    take:
+    READS
+    main:
+    if (params.assembled_mito == false){
+        MITOCONDRIAS = MITOHIFI(READS,reference).genome.collect()}
+    else {
+        MITOCONDRIAS = Channel.fromPath(params.assembled_mito).collect()}
+//    alignments = ALIGN_MITO(MITOCONDRIAS)
+     
+    }
+    
+// MITO workflow is not working. Problems with multiple genome alignment
+// for pop.genomics better to do variant calling
+
+workflow NUCLEAR {    
+    take:
+    READS
+
+    main:
     ASSEMBLY = Channel.fromPath(params.genome, checkIfExists: true)    
-    INPUT = ASSEMBLY.combine(READS)  
+    INPUT = ASSEMBLY.combine(READS)
     COLLECTED_MAPPINGS = channel.empty()
+
     if (params.mapped == false) {
         MAPPINGS = MINIMAP(INPUT).mappings
     } else {
@@ -62,3 +113,10 @@ workflow {
 }
 
 
+workflow {
+    READS = Channel.fromPath(params.reads, checkIfExists:true)
+    NUCLEAR(READS)
+    // MITO(READS)
+    }
+    
+    

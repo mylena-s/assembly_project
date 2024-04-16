@@ -56,3 +56,7 @@ cd ../software
 cd ../bin/ & wget http://bioinf.uni-greifswald.de/bioinf/downloads/simplifyFastaHeaders.pl
 chmod +x simplifyFastaHeaders.pl 
 cd ../software
+=======
+# mitohifi
+singularity pull mitohifi.sif docker://ghcr.io/marcelauliano/mitohifi:master
+
