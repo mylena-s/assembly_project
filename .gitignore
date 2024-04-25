@@ -8,4 +8,4 @@ miniforge3/
 work/
 nextflow
 lib/uniref90.fasta.gz
-lib/nt
+lib/nt/taxdump/*dmp
