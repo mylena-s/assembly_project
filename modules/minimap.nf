@@ -24,6 +24,36 @@ process MINIMAP{
     """
 }
 
+process MINIMAP2{
+    label 'medium_resources'
+    label 'minimap'
+    maxForks 10
+    publishDir "${params.publishDir}/alignment", mode: 'copy'   
+
+
+    input:
+    tuple path(genome), path(reads)
+    val (type)
+
+    output:
+    path '*.bam', emit: mappings
+    path '.*command.*'
+
+    script:
+    def mem = "${task.memory}".replaceAll("\\sGB","G")
+    def name = "${reads.baseName}".replaceAll(".fastq","")
+
+    """minimap2 -ax map-$type $genome $reads -o ${name}.sam
+    samtools view -b ${name}.sam -o ${name}.bam 
+    rm *sam
+    samtools sort -@${task.cpus} -O BAM -o ${genome.baseName}_${name}_sorted.bam ${name}.bam   
+    rm ${name}.bam
+    mv .command.sh .${genome.baseName}_${name}.command.sh
+    mv .command.log .${genome.baseName}_${name}.command.log
+    
+    """
+}
+
 process MARKDUP{
     label 'medium_resources'
     publishDir "${params.publishDir}/population/alignment", mode: 'copy'   
