@@ -121,9 +121,7 @@ process RUN_BLOBTOOLS {
     label 'blobtools'
 
     input:
-    path genome
-    path blastout
-    path sortedbam
+    tuple path(genome), path(blastout), path(sortedbam)
     
     output:
     path 'blobtools_dir', emit: folder
@@ -132,7 +130,7 @@ process RUN_BLOBTOOLS {
     script:
     """
     blobtools create --fasta $genome 04_blobtools_${genome.baseName}
-    blobtools add --hits $blastout --cov $sortedbam --taxdump $projectDir/lib/taxdump/ 04_blobtools_${genome.baseName}
+    blobtools add --hits $blastout --taxrule bestsumorder --cov $sortedbam --taxdump $projectDir/lib/nt/taxdump/ 04_blobtools_${genome.baseName}
     """    
 }
 
@@ -171,6 +169,7 @@ process CIRCULARIZE{
     simple_circularise.py $mitochondria circMitochondria.fasta -min 10000
     """
 }
+params.blast = false
 
 workflow CONTAMINATION {
     take:
@@ -181,14 +180,19 @@ workflow CONTAMINATION {
         include { MINIMAP } from './modules/minimap.nf'
         
         if (mapped == false){
-            MAPPINGS = MINIMAP(READS, ASSEMBLIES) // tuple output ASSEMBLY, BAM
+            MAPPINGS = MINIMAP(ASSEMBLIES,READS).mappings
             }
         else {
             MAPPINGS.Channel.fromPath(params.mapped)
-            MAPPINGS.ifEmpty{MAPPINGS = MINIMAP(READS, ASSEMBLIES)}} 
-
-        BLOBINPUT = DBLAST(MAPPINGS).blastout // tuple input ASSEMBLY, BAM // output tuple ASSEMBLY, BAM, BLASTOUT     
-        BLOB = RUN_BLOBTOOLS(BLOBINPUT) // TUPLE INPUT; END
+            MAPPINGS.ifEmpty{MAPPINGS = MINIMAP(ASSEMBLIES, READS)}} 
+        if (params.blast == false){
+            HITS = DBLAST(ASSEMBLIES).blastout     
+        }
+        else {
+            HITS = Channel.fromPath(params.blast, checkIfExists=true)
+        }
+        BLOBINPUT = ASSEMBLIES.combine(MAPPINGS).combine(HITS)
+        BLOB = RUN_BLOBTOOLS(BLOBINPUT) 
 }
 
 process MAKECFG {
