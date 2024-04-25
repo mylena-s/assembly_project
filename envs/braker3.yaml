@@ -1,0 +1,7 @@
+name: 
+  braker
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - braker3
