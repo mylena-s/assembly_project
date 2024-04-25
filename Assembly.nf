@@ -130,18 +130,6 @@ process  ASSEMBLY_HIFI {
     for file in *gfa; do gfastats $file -o fa --discover-paths > $file'.fasta'
     """
 }
-process SAMPLE_ONT {
-    label 'low_resources'
-    label 'nanoplot'
-
-    input:
-    path reads
-    output:
-    path "*50Kb.fastq.gz", emit:reads
-    script:
-    """gunzip -c $reads | NanoFilt -l 50000 | pigz > ${reads.baseName}_50Kb.fastq.gz"""
-
-}
 
 process ASSEMBLY_HIBRID{
     label 'verkko'
@@ -200,14 +188,15 @@ process SCAFFOLDING {
     output:
     path("ntlink.fasta"), emit: scaffolded_genome
     path "ntlink.agp", emit: assemblygraph
+    path "*paf", emit: alignment
     path ".command*"
 
     script:
     """
-    seqkit seq -m 1000 $genome > genome_1k.fasta
-    ntLink_rounds run_rounds_gaps target=genome_1k.fasta reads=reads.fq.gz k=32 w=250 t=$task.cpus rounds=4 clean=True overlap=True a=$params.nreads
-    mv genome_1k.fasta.k32.w250.z1000.ntLink.ntLink.gap_fill.fa.k32.w250.z1000.ntLink.scaffolds.gap_fill.fa ntlink.fasta
-    mv genome_1k.fasta.k32.w250.z1000.ntLink.ntLink.gap_fill.fa.k32.w250.z1000.ntLink.scaffolds.gap_fill.fa.agp ntlink.agp
+    seqkit seq -m 1000 $genome > genome_subset.fasta
+    ntLink_rounds run_rounds_gaps target=genome_subset.fasta reads=reads.fq.gz k=32 w=250 t=$task.cpus rounds=4 clean=True overlap=True a=$params.nreads paf=True
+    mv genome_subset.fasta.k32.w250.z1000.ntLink.ntLink.gap_fill.fa.k32.w250.z1000.ntLink.scaffolds.gap_fill.fa ntlink.fasta
+    mv genome_subset.fasta.k32.w250.z1000.ntLink.ntLink.gap_fill.fa.k32.w250.z1000.ntLink.scaffolds.gap_fill.fa.agp ntlink.agp
     """
 }
 
@@ -246,6 +235,9 @@ params.db = '/home/fhenning/assembly_project/lib/actinopterygii_odb10.tar.gz'
 params.nreads = 2
 params.ul = "NO_FILE"
 
+
+include { SAMPLE_ONT } from './modules/extra.nf'
+
 workflow {
     READS = Channel.fromPath(params.reads, checkIfExists:true) 
     UL = Channel.fromPath(params.ul, checkIfExists:false)
@@ -266,7 +258,7 @@ workflow {
                 HAPLOTIGS = PURGE_HAPLOTIGS(PRIMARY, READS, params.type)
 
             } else {
-                ONT=SAMPLE_ONT(UL).reads
+                ONT=SAMPLE_ONT(UL, 50000).reads
                 INPUT = ONT.combine(READS)
                 PRIMARY = ASSEMBLY_HIBRID(INPUT)
             }
