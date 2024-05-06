@@ -44,13 +44,12 @@ process MINIMAP2{
     def name = "${reads.baseName}".replaceAll(".fastq","")
 
     """minimap2 -ax map-$type $genome $reads -o ${name}.sam
-    samtools view -b ${name}.sam -o ${name}.bam 
+    samtools view -bq 20 ${name}.sam -o ${name}.bam 
     rm *sam
     samtools sort -@${task.cpus} -O BAM -o ${genome.baseName}_${name}_sorted.bam ${name}.bam   
     rm ${name}.bam
     mv .command.sh .${genome.baseName}_${name}.command.sh
     mv .command.log .${genome.baseName}_${name}.command.log
-    
     """
 }
 
@@ -82,12 +81,13 @@ process BAMQC {
     path ".command*"
 
     script:
-    """qualimap bamqc -bam $bam -nt $task.cpus -outdir ${bam.baseName} -outformat HTML
+    def mem = "${task.memory}".replaceAll("\\sGB","G")
+    """qualimap bamqc -bam $bam --java-mem-size=$mem -nt $task.cpus -outdir ${bam.baseName} -outformat HTML
     """
 }
 process FREEBAYES_JOINT{
     label 'low_resources'
-    publishDir "${params.publishDir}/population/SNP_variant_calling", mode: 'copy'   
+    publishDir "${params.publishDir}/population/variant_calling/00_freebayes", mode: 'copy'   
     label 'minimap'
     maxForks 10
 
@@ -102,7 +102,7 @@ process FREEBAYES_JOINT{
     script:
     def files = bams.join(' ')
     """ls $files > bam_list
-    freebayes -f $genome -L bam_list --gvcf -g 100 --ploidy 2 -r $sequence_id > ${genome.baseName}_${sequence_id}_jointcall.vcf
+    freebayes -f $genome -L bam_list --gvcf -g 400 --ploidy 2 -r $sequence_id > ${genome.baseName}_${sequence_id}_jointcall.vcf
     mv .command.sh jointcall.command.sh
     mv .command.log jointcall.command.log
     """
