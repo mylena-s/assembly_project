@@ -1,10 +1,9 @@
-name: minimap
+name: vcflib
 channels:
   - conda-forge
   - bioconda
 dependencies:
-  - minimap2=2.26
+  - vcflib
+  - tabix
   - samtools
-  - bamaddrg
-  - bcftools
-  - kmc
+  - picard

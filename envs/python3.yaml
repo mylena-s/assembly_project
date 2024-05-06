@@ -1,0 +1,9 @@
+name: python
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python
+  - pandas
+  - matplotlib
+

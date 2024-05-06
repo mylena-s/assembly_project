@@ -60,3 +60,42 @@ cd ../software
 # mitohifi
 singularity pull mitohifi.sif docker://ghcr.io/marcelauliano/mitohifi:master
 
+# satellite finder
+git clone https://github.com/lh3/srf
+cd srf && make
+cd ../../bin
+ln -s ../software/srf/srf .
+ln -s ../software/srf/srf .
+cd ../software
+
+# k8 for srf
+wget https://github.com/lh3/dipcall/releases/download/v0.3/dipcall-0.3_x64-linux.tar.bz2
+tar -jxf dipcall-0.3_x64-linux.tar.bz2
+cd ../bin
+ln -s ../software/dipcall.kit/k8 .
+cd ../software
+
+# nessie for centromere analysis
+git clone https://github.com/mylena-s/nessie.git
+cd nessie & make
+chmod +x to_wig.py
+cd ../../bin 
+ln -s ../software/nessie/nessie . 
+ln -s ../software/nessie/to_wig.py .
+cd ../software
+
+#variantqc
+singularity pull discvrseq.sif docker://ghcr.io/bimberlab/discvrseq:latest
+
+# wig to bigwig
+wget http://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64.v369/wigToBigWig
+chmod +x wigToBigWig
+cd ../bin/ & ln -s ../software/wigToBigWig . 
+cd ../software
+
+# plink2
+wget https://s3.amazonaws.com/plink2-assets/plink2_linux_amd_avx2_20240418.zip
+unzip plink2_linux_amd_avx2_20240418.zip
+cd ../bin
+ln -s ../software/plink2 .
+cd ../software
