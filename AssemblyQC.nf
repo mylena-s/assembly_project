@@ -93,6 +93,7 @@ process RUN_INSPECTOR {
 process DBLAST {
     label 'resource_intensive'
     label 'blobtools'
+    publishDir "${params.publishDir}/assembly/QC/04_blobtools", mode: 'copy'
 
     input:
     path genome
@@ -117,6 +118,7 @@ process DBLAST {
 process RUN_BLOBTOOLS {
     label 'medium_resources'
     label 'blobtools'
+    publishDir "${params.publishDir}/assembly/QC/04_blobtools", mode: 'copy'
 
     input:
     tuple path(genome), path(blastout), path(sortedbam)
