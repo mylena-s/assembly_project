@@ -128,7 +128,9 @@ process CUTADAPT{
     -e 0.1 -O 35 --rc --discard-trimmed -j 0 \
     -o ${reads.baseName}_trimmed.fq.gz $reads \
     -j 10 --json=${reads.baseName}.cutadapt.json
-    """
+    mv .command.sh .${reads.baseName}.command.sh
+    mv .command.log .${reads.baseName}.command.log    
+"""
 }
 
 process MULTIQC{
