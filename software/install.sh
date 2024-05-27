@@ -99,3 +99,27 @@ unzip plink2_linux_amd_avx2_20240418.zip
 cd ../bin
 ln -s ../software/plink2 .
 cd ../software
+# vcftools
+git clone https://github.com/vcftools/vcftools.git
+cd vcftools
+./autogen.sh
+./configure --prefix=$PWD
+make
+make install
+cd ../../bin
+ln -s ../software/vcftools/bin/* .
+cd ../software
+
+# beagle
+wget https://faculty.washington.edu/browning/beagle/beagle.01Mar24.d36.jar
+chmod +x beagle*.jar
+cd ../bin/
+ln -s ../software/beagle.*.jar .
+cd ../software
+# twiss
+git clone https://github.com/simonhmartin/genomics_general.git
+git clone https://github.com/simonhmartin/twisst.git
+cd ../bin & ln -s ../software/twiss/*.R .
+ln -s ../software/twiss/*py .
+ln -s ../genomics_general/*py .
+cd ../software

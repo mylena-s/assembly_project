@@ -16,7 +16,7 @@ params.nodup = false
 process JOIN_VCF {
     label 'low_resources'
     label 'minimap'
-    publishDir "${params.publishDir}/population/SNP_variant_calling/00_freebayes", mode: 'copy'   
+    publishDir "${params.publishDir}/population/variant_calling/00_freebayes", mode: 'copy'   
 
     input:
     path(vcfs)
@@ -66,7 +66,7 @@ process PREPARE_FILESQC{
 
     script:
     """samtools faidx $genome
-    tabix $vcf
+    tabix -p vcf $vcf
     picard CreateSequenceDictionary -R $genome"""
 }
 
@@ -78,20 +78,20 @@ process FILTER{
 
     input:
     path vcf
+    each path(reference)
 
     output:
-    path "*_filtered.vcf.gz", emit: vcf
+    path "*_filtered_normalized.vcf.gz", emit: vcf
 
     script:
     def name = "${vcf}".replaceAll(".vcf.gz","")
     """
-    tabix $vcf
-    vcffilter -f 'QUAL > 20' -g 'DP > 1 & DP < 30' $vcf > ${name}_filtered.vcf
-    bgzip *filtered.vcf
+    bgzip -d $vcf
+    vt decompose_blocksub ${vcf.baseName} | vt normalize -r $reference - > intermediate.vcf
+    vcffilter -f 'QUAL / AO > 10 & TYPE = snp' -g 'DP > 1 & DP < 20' intermediate.vcf > ${name}_filtered_normalized.vcf
+    bgzip *_filtered_normalized.vcf
     """
 }
-
-
 
 process MITOHIFI{
     label 'medium_resources'
@@ -128,6 +128,8 @@ process PLINK2_FORMAT {
 
     input:
     path vcf
+    path phenotypes
+
     output:
     path ".*command.*"
     tuple path("*.pgen"), path("*.psam"), path("*.pvar"), emit: pfiles
@@ -135,25 +137,23 @@ process PLINK2_FORMAT {
     script:
     def name = "${vcf}".replaceAll(".vcf.gz","")
     """
-    plink2 --make-pgen --vcf $vcf --allow-extra-chr --vcf-half-call m --out $name
+    plink2 --make-pgen --vcf $vcf --allow-extra-chr --vcf-half-call m --out $name --set-all-var-ids '@:#\$r\$a' --new-id-max-allele-len 1000 truncate --pheno $phenotypes 
     mv .command.sh .${name}.command.sh
     mv .command.log .${name}.command.log
     """
-
 }
 
 process AFS{
     label 'low_resources'
-    publishDir "${params.publishDir}/population/popgen/01_afs", mode: 'copy'   
+    publishDir "${params.publishDir}/population/popgen/02_afs", mode: 'copy'   
 
     input:
     tuple path(pgen), path(psam), path(pvar)
     each path(population)
 
     output:
-    path "*.afreq", emit: freq
-    path "*.bins", emit: bins
-
+    tuple path("*.pgen",includeInputs:true), path("*.psam",includeInputs:true), path("*.pvar",includeInputs:true), path("*.afreq"), path("*.bins"), emit: pfiles
+    tuple path(".*command.sh"), path(".*command.log")
     script:
     def name = "${pgen.baseName}_${population}".replaceAll(".pop","")
     """
@@ -166,11 +166,12 @@ process AFS{
 
 process PLOTAFS{
     label 'low_resources'
-    publishDir "${params.publishDir}/population/popgen/01_afs", mode: 'copy'   
+    publishDir "${params.publishDir}/population/popgen/02_afs", mode: 'copy'   
     label 'python'
 
     input:
-    path afs
+    tuple path("*.pgen"), path("*.psam"), path("*.pvar"), path(afs), path("*.bins")
+
     output:
     path '*png'
 
@@ -188,32 +189,151 @@ plt.savefig("${afs.baseName}.png")"""
 
 process FST_WINDOWS{
     label 'low_resources'
-    publishDir "${params.publishDir}/population/popgen/02_fst", mode: 'copy'   
+    publishDir "${params.publishDir}/population/popgen/03_fst", mode: 'copy'
+    errorStrategy 'ignore'
 
     input:
-    path vcf
+    each path(vcf)
     tuple path (pop1), path(pop2)
 
     output:
     path "*.fst"
     path "*list"
+    path ".*command.log"
+    path ".*command.sh"
     
     script:
+    def name = "${vcf.baseName}_${pop1.baseName}_${pop2.baseName}"
     """
-    vcftools --gzvcf $vcf --weir-fst-pop $pop1 --weir-fst-pop $pop2 --fst-window-size $params.winsize
-    --out ${pop1.baseName}_${pop2.baseName}_w$params.winsize
-    awk 'NR==1 || \$5 > 0.4' *.fst > highWeightedFst.list
-    awk 'NR==1 || \$6 > 0.2' *.fst > highMeanFst.list 
-    mv .command.sh .${pop1.baseName}_${pop2.baseName}.command.sh
-    mv .command.log .${pop1.baseName}_${pop2.baseName}.command.log
+    vcftools --gzvcf $vcf --weir-fst-pop $pop1 --weir-fst-pop $pop2 --fst-window-size $params.winsize --out ${name}_w$params.winsize
+    awk 'NR==1 || \$5 > 0.4' *.fst > ${name}_highWeightedFst.list
+    awk 'NR==1 || \$6 > 0.2' *.fst > ${name}_highMeanFst.list 
+    mv .command.sh .${name}.command.sh
+    mv .command.log .${name}.command.log
     """
 }
+
+
+process STATISTICS_WINDOWS{
+    label 'low_resources'
+    publishDir "${params.publishDir}/population/popgen/01_stats", mode: 'copy'
+    errorStrategy 'ignore'
+
+    input:
+    path vcf
+    each (pop)
+    output:
+    path "*.het"
+    path "*.imiss"
+    path "*.lmiss"
+    path "*.pi"
+    path ".*command.log"
+    path ".*command.sh"
+    path "*warnings.txt"
+    
+    script:
+    def name = "${vcf.baseName}_${pop.baseName}"
+
+    """
+    vcftools --gzvcf $vcf --out ${name}_w$params.winsize --keep $pop --window-pi $params.winsize  2> warnings.txt
+    vcftools --gzvcf $vcf --het --out ${name} --keep $pop 2>> ${name}_warnings.txt
+    vcftools --gzvcf $vcf --missing-indv --out ${name} --keep $pop 2>> ${name}_warnings.txt
+    vcftools --gzvcf $vcf --missing-site --out ${name} --keep $pop 2>> ${name}_warnings.txt
+    mv .command.sh .${name}_command.sh
+    mv .command.log .${name}_command.log
+    """
+
+}
+
+process PLINK_PCA {
+    publishDir "${params.publishDir}/population/popgen/04_pca", mode: 'copy'
+    label 'low_resources'
+    input:
+    tuple path(pgen), path(psam), path(pvar), path(freq), path("*.bins")
+
+    output:
+    tuple path("*.eigenvec"), path("*.eigenval"),path(".*command.log"), emit:results
+    tuple path(".*command.sh")
+
+    script:
+    def name = "${pgen.baseName}"
+    """
+    plink2 --pfile $name --allow-extra-chr --snps-only --read-freq $freq --pca --out $name --maf 
+    mv .command.sh .${name}.command.sh
+    mv .command.log .${name}.command.log
+    """
+}
+
+
+process PLOT_PCA {
+    
+    input:
+    tuple path(eigenvec), path(eigenval), path(log)
+    path(sample_info)
+
+    output:
+    path("*PCA.svg")
+
+    script:
+    """
+#!/usr/bin/env python3
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import re
+
+eigenval = pd.read_csv('${eigenval}', sep=' ', header=None)
+eigenval["percent"] = eigenval[0] / sum(eigenval[0]) * 100
+PC1 = "PC1 ("+str(eigenval.percent[0].round(1))+"%)"
+PC2 = "PC2 ("+str(eigenval.percent[1].round(1))+"%)"
+PC3 = "PC3 ("+str(eigenval.percent[2].round(1))+"%)"
+pattern = re.compile("[0-9]+ variants remaining")
+for i, line in enumerate(open('${log})):
+    for match in re.finditer(pattern, line):
+        n_SNPS = round(int(match[0].split(" ")[0])/1000000,1)
+fig, axis = plt.subplots(nrows=2, ncols=2, figsize=(10,10),)
+screplot = axis[0,0].bar(x=eigenval.index+1 , height = eigenval.percent,
+                         alpha=0.5)
+axis[0,0].set_xlabel("Principal component", fontsize = 12)
+axis[0,0].set_ylabel("Percentaje of explained variance (%)", fontsize = 12)
+eigenvec = pd.read_csv('${eigenvec}', sep='\t')
+population = pd.read_csv("${sample_info}", sep="\t")
+eigenvec = pd.merge(eigenvec, population, left_on="#IID", right_on="sample_id",
+                    how="left")
+PC1_2= sns.scatterplot(x=eigenvec.PC1, y=eigenvec.PC2, hue=eigenvec.morphology,
+                       ax= axis[0,1],style=eigenvec.population, alpha=0.25,
+                       legend='full', s=400)
+legend=axis[0,1].legend(fontsize="large", bbox_to_anchor=(1.05, 1),
+                        loc='upper left', title="References\n ("+ str(n_SNPS)
+                        + "M SNPs)")
+axis[0,1].set_xlabel(PC1, fontsize = 12)
+axis[0,1].set_ylabel(PC2, fontsize = 12)
+plt.setp(legend.get_title(),fontsize='large')
+PC1_3= sns.scatterplot(x=eigenvec.PC1, y=eigenvec.PC3, hue=eigenvec.morphology,
+                       ax= axis[1,0],style=eigenvec.population, alpha=0.25,
+                       s=400, legend=False)
+axis[1,0].set_xlabel(PC1, fontsize = 12)
+axis[1,0].set_ylabel(PC3, fontsize = 12)
+PC3_3=sns.scatterplot(x=eigenvec.PC2, y=eigenvec.PC3, hue=eigenvec.morphology,
+                      ax= axis[1,1],style=eigenvec.population, alpha=0.25,
+                      s=400, legend=False)
+axis[1,1].set_xlabel(PC2, fontsize = 12)
+axis[1,1].set_ylabel(PC3, fontsize = 12)
+plt.savefig("PCA.svg", dpi=300)
+PC3_3=sns.scatterplot(x=eigenvec.PC2, y=eigenvec.PC3, hue=eigenvec.morphology,
+                      ax= axis[1,1],style=eigenvec.population, alpha=0.25,
+                      s=400,  legend=False)
+axis[1,1].set_xlabel(PC2, fontsize = 12)
+axis[1,1].set_ylabel(PC3, fontsize = 12)
+plt.savefig("${eigenval.baseName}_PCA.svg", dpi=300)
+"""
+}
+
 params.winsize=10000
-
-
 reference = "$projectDir/lib/NC_030272.1"
 params.assembled_mito = false
 params.vcfs = false
+params.phenotype = "$projectDir/lib/dummy.file"
 
 workflow MITO {
     take:
@@ -242,14 +362,14 @@ workflow NUCLEAR {
     if (params.mapped == false) {
         MAPPINGS = MINIMAP(INPUT).mappings
     } else {
-        MAPPINGS = Channel.fromPath(params.mapped, checkIfExists: true) 
+        MAPPINGS = Channel.fromPath(params.mapped) 
     }
     if (params.nodup == false) {
         MAPPINGS_NODUP = MARKDUP(MAPPINGS).mappings
         COLLECTED_MAPPINGS = MAPPINGS_NODUP.collect()
     } else {
-        MAPPINGS_NODUP = Channel.fromPath(params.nodup, checkIfExists:true) }
-        COLLECTED_MAPPINGS = MAPPINGS_NODUP.collect() 
+        MAPPINGS_NODUP = Channel.fromPath(params.nodup, checkIfExists:true) 
+        COLLECTED_MAPPINGS = MAPPINGS_NODUP.collect()}
     BAMQC(MAPPINGS_NODUP)
     contigs_file = file(params.contigs)
     allcontigs = Channel.fromList(contigs_file.readLines())
@@ -277,8 +397,11 @@ params.filter = true
 params.vcf = false
 params.QC = true
 params.population = false
-
+params.pca = false
+params.pairwise = false
 workflow {
+    ASSEMBLY = Channel.fromPath(params.genome)    
+
     if (params.vcf == false) {
         READS = Channel.fromPath(params.reads, checkIfExists:true)
         VCF = NUCLEAR(READS)
@@ -289,26 +412,38 @@ workflow {
     }
 
     if (params.filter == true) {
-        filtered = FILTER(VCF).vcf
+        filtered = FILTER(VCF, ASSEMBLY).vcf
     } else {
         filtered = channel.empty()
     }
 
-    VCFs = VCF.concat(filtered)
-
     if (params.QC == true){
+        VCFs = VCF.concat(filtered)
         VCF_QC(VCFs)
     } else {
         println("QC was skipped") 
     }
+    VCFs = filtered
 
-    if (params.population != false){
-        POPULATION = Channel.fromPath(params.population, checkIfExists: true)
-        PLINKOUTPUT = PLINK2_FORMAT(VCFs).pfiles
-        FREQSPECTRUM = AFS(PLINKOUTPUT, POPULATION)}
-        PLOTAFS(FREQSPECTRUM.bins)
-        POPULATION2 = POPULATION
-        COMPARISONS = POPULATION.combine(POPULATION2)
+    PHENOTYPES = Channel.fromPath(params.phenotype, checkIfExists: true)
+
+    if (params.pairwise != false) {
+        POPULATION1 = Channel.fromPath(params.population, checkIfExists: true)
+        POPULATION2 = Channel.fromPath(params.population2, checkIfExists: true)
+        COMPARISONS = POPULATION1.combine(POPULATION2)
         FST_WINDOWS(VCFs, COMPARISONS)
-    }
+        POPULATION = POPULATION1.concat(POPULATION2)
+        
+    } else {
+        POPULATION = Channel.fromPath(params.population)}
     
+    PLINKOUTPUT = PLINK2_FORMAT(VCFs, PHENOTYPES).pfiles
+    FREQSPECTRUM = AFS(PLINKOUTPUT, POPULATION) 
+    //PLOTAFS(FREQSPECTRUM.pfiles)
+    STATISTICS_WINDOWS(VCFs, POPULATION)  
+    
+    if (params.pca != false){
+        PCA = PLINK_PCA(FREQSPECTRUM.pfiles)
+        PLOT_PCA(PCA.results, PHENOTYPES)
+        }
+    }

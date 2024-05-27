@@ -89,7 +89,7 @@ process FREEBAYES_JOINT{
     label 'low_resources'
     publishDir "${params.publishDir}/population/variant_calling/00_freebayes", mode: 'copy'   
     label 'minimap'
-    maxForks 10
+    maxForks 5
 
     input:
     tuple path(genome), val(sequence_id)
