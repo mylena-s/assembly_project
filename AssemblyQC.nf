@@ -117,20 +117,20 @@ process DBLAST {
 process RUN_BLOBTOOLS {
     label 'medium_resources'
     label 'blobtools'
+    publishDir "${params.publishDir}/assembly/QC", mode: 'copy'
 
     input:
-    path genome
-    path blastout
-    path sortedbam
+    tuple path (genome), path (sortedbam), path( blastout)
     
     output:
-    path 'blobtools_dir', emit: folder
-    tuple path('blobtools_dir/blobDB.table.txt'), val ("${transcriptome.baseName}"), emit: blobout
+    path "04_blobtools_${genome.baseName}", emit: folder
    
     script:
     """
+    gunzip $sortedbam -c > mappings.bam
     blobtools create --fasta $genome 04_blobtools_${genome.baseName}
-    blobtools add --hits $blastout --cov $sortedbam --taxdump $projectDir/lib/taxdump/ 04_blobtools_${genome.baseName}
+    blobtools add --hits $blastout --cov mappings.bam --taxdump $projectDir/lib/taxdump/ 04_blobtools_${genome.baseName}
+    rm mappings.bam
     """    
 }
 
@@ -169,23 +169,26 @@ process CIRCULARIZE{
     simple_circularise.py $mitochondria circMitochondria.fasta -min 10000
     """
 }
+include { MINIMAP } from './modules/minimap.nf'
 
 workflow CONTAMINATION {
     take:
         READS
         ASSEMBLIES
         MAPPINGS // puede estar vacio
-    main:
-        include { MINIMAP } from './modules/minimap.nf'
-        
-        if (mapped == false){
+    main:        
+        if (params.mapped == false){
             MAPPINGS = MINIMAP(READS, ASSEMBLIES) // tuple output ASSEMBLY, BAM
             }
         else {
-            MAPPINGS.Channel.fromPath(params.mapped)
-            MAPPINGS.ifEmpty{MAPPINGS = MINIMAP(READS, ASSEMBLIES)}} 
-
-        BLOBINPUT = DBLAST(MAPPINGS).blastout // tuple input ASSEMBLY, BAM // output tuple ASSEMBLY, BAM, BLASTOUT     
+            MAPPINGS = Channel.fromPath(params.mapped)
+            //MAPPINGS.ifEmpty{MAPPINGS = MINIMAP(READS, ASSEMBLIES)}
+            } 
+        if (params.blast == false){
+            BLOBINPUT = DBLAST(MAPPINGS).blastout }
+        else {
+            BLAST = Channel.fromPath(params.blast)}// tuple input ASSEMBLY, BAM // output tuple ASSEMBLY, BAM, BLASTOUT     
+            BLOBINPUT = ASSEMBLIES.combine(MAPPINGS).combine(BLAST) 
         BLOB = RUN_BLOBTOOLS(BLOBINPUT) // TUPLE INPUT; END
 }
 
@@ -278,7 +281,7 @@ workflow {
     if (params.correctness == true){
         CORRECTNESS = RUN_INSPECTOR(INPUT)
         MAPPINGS = CORRECTNESS.mappings}
-    if (params.cleaness ==true){
+    if (params.cleaness == true){
         CLEANESS = CONTAMINATION(READS, ASSEMBLIES, MAPPINGS)
     }
 }
