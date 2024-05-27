@@ -1,0 +1,6 @@
+name: whatshap
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - whatshap

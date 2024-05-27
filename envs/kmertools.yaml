@@ -9,3 +9,4 @@ dependencies:
   - r-minpack.lm
   - r-argparse
   - seqtk
+  - kmc

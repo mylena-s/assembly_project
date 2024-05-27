@@ -93,6 +93,7 @@ process RUN_INSPECTOR {
 process DBLAST {
     label 'resource_intensive'
     label 'blobtools'
+    publishDir "${params.publishDir}/assembly/QC/04_blobtools", mode: 'copy'
 
     input:
     path genome
@@ -121,6 +122,7 @@ process RUN_BLOBTOOLS {
 
     input:
     tuple path (genome), path (sortedbam), path( blastout)
+
     
     output:
     path "04_blobtools_${genome.baseName}", emit: folder
@@ -169,7 +171,9 @@ process CIRCULARIZE{
     simple_circularise.py $mitochondria circMitochondria.fasta -min 10000
     """
 }
+
 include { MINIMAP } from './modules/minimap.nf'
+
 
 workflow CONTAMINATION {
     take:
