@@ -1,0 +1,6 @@
+name: pbmm2
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - pbmm2
