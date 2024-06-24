@@ -82,6 +82,7 @@ process FILTER{
 
     output:
     path "*_filtered_normalized.vcf.gz", emit: vcf
+    tuple path(".command.sh"), path(".command.log")
 
     script:
     def name = "${vcf}".replaceAll(".vcf.gz","")
@@ -137,11 +138,61 @@ process PLINK2_FORMAT {
     script:
     def name = "${vcf}".replaceAll(".vcf.gz","")
     """
-    plink2 --make-pgen --vcf $vcf --allow-extra-chr --vcf-half-call m --out $name --set-all-var-ids '@:#\$r\$a' --new-id-max-allele-len 1000 truncate --pheno $phenotypes 
+    plink2 --make-pgen --vcf $vcf --allow-extra-chr --max-alleles 2 --mind 0.1 --vcf-half-call m --maf 0.05 --out $name --set-all-var-ids '@:#\$r\$a' --new-id-max-allele-len 1000 truncate --pheno $phenotypes 
     mv .command.sh .${name}.command.sh
     mv .command.log .${name}.command.log
     """
+    // no multiallelic, remove samples with > 10% missing, remove alelles with freq <5%
 }
+
+process PLINK2_WIDE {
+    label 'low_resources'
+    publishDir "${params.publishDir}/population/popgen/00_input", mode: 'copy'   
+
+    input:
+    tuple path(pgen), path(psam), path(pvar)
+ 
+    output:
+    path ".*command.*"
+    tuple path("*.pgen"), path("*.psam"), path("*.pvar"), emit: pfiles
+    path "*wide.vcf", emit: vcf
+
+    script:
+    def name = "${pgen.baseName}_wide"
+
+    """
+    plink2 --pfile ${pgen.baseName} --allow-extra-chr --maf 0.05 --geno 0.01 --export vcf-4.2 --out ${name} --threads $task.cpus --make-pgen
+    mv .command.sh .${name}.command.sh
+    mv .command.log .${name}.command.log
+    """
+// missingness // hw 
+}
+
+process PLINK2_PAIRWISE {
+    label 'low_resources'
+    publishDir "${params.publishDir}/population/popgen/00_input", mode: 'copy'   
+
+    input:
+    tuple path(pgen), path(psam), path(pvar)
+    path population
+
+    output:
+    path ".*command.*"
+    tuple path("*.pgen"), path("*.psam"), path("*.pvar"), emit: pfiles
+    path "*_pairwise.vcf", emit: vcf
+
+    script:
+    def name = "${pgen.baseName}_pairwise"
+
+    """
+    plink2 --pfile ${pgen.baseName} --allow-extra-chr --maf 0.05 --geno 0.05 --threads $task.cpus --keep $population --hwe 1e-20 --keep-if morphology == 1 --write-snplist --out hwe_pass
+    plink2 --pfile ${pgen.baseName} --extract hwe_pass.snplist --export vcf-4.2 --out ${name} --make-pgen
+    mv .command.sh .${name}.command.sh
+    mv .command.log .${name}.command.log
+    """
+// missingness // hw 
+}
+
 
 process AFS{
     label 'low_resources'
@@ -253,22 +304,40 @@ process PLINK_PCA {
 
     output:
     tuple path("*.eigenvec"), path("*.eigenval"),path(".*command.log"), emit:results
-    tuple path(".*command.sh")
+    tuple path(".*command.sh"), path(".*command.log")
 
     script:
     def name = "${pgen.baseName}"
     """
-    plink2 --pfile $name --allow-extra-chr --snps-only --read-freq $freq --pca --out $name --maf 
+    plink2 --pfile $name --allow-extra-chr --snps-only --read-freq $freq --pca --out $name --maf 0.05
     mv .command.sh .${name}.command.sh
     mv .command.log .${name}.command.log
     """
 }
 
+process GWAS{
+    label 'low_resources'
+    publishDir "${params.publishDir}/population/popgen/05_gwas", mode: 'copy'
+
+    input:
+    tuple path(pgen), path(psam), path(pvar)
+    output:
+    path("gwas_results*")
+    tuple path (".command.sh"), path(".command.log")
+
+    script:
+    """
+    plink2 --pfile ${pgen.baseName} --pheno-name $params.phenotype_name --glm no-firth allow-no-covars --out gwas_results --allow-extra-chr --threads $task.cpus  
+    """
+//--covar ${covariateFile} --covar-col-nums ${covariateCols}  hide-covar https://cloufield.github.io/GWASTutorial/06_Association_tests/
+} 
 
 process PLOT_PCA {
-    
+    label 'python'
+    publishDir "${params.publishDir}/population/popgen/04_pca", mode: 'copy'
+
     input:
-    tuple path(eigenvec), path(eigenval), path(log)
+    tuple path(eigenvec), path(eigenval), path(prevlog)
     path(sample_info)
 
     output:
@@ -282,47 +351,45 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import re
 
-eigenval = pd.read_csv('${eigenval}', sep=' ', header=None)
+eigenval = pd.read_csv('${eigenval}', sep='\\s+', header=None)
 eigenval["percent"] = eigenval[0] / sum(eigenval[0]) * 100
 PC1 = "PC1 ("+str(eigenval.percent[0].round(1))+"%)"
 PC2 = "PC2 ("+str(eigenval.percent[1].round(1))+"%)"
 PC3 = "PC3 ("+str(eigenval.percent[2].round(1))+"%)"
 pattern = re.compile("[0-9]+ variants remaining")
-for i, line in enumerate(open('${log})):
+
+file = open('${prevlog}')
+for i, line in enumerate(file):
     for match in re.finditer(pattern, line):
         n_SNPS = round(int(match[0].split(" ")[0])/1000000,1)
+
+file.close()
 fig, axis = plt.subplots(nrows=2, ncols=2, figsize=(10,10),)
 screplot = axis[0,0].bar(x=eigenval.index+1 , height = eigenval.percent,
                          alpha=0.5)
 axis[0,0].set_xlabel("Principal component", fontsize = 12)
 axis[0,0].set_ylabel("Percentaje of explained variance (%)", fontsize = 12)
-eigenvec = pd.read_csv('${eigenvec}', sep='\t')
-population = pd.read_csv("${sample_info}", sep="\t")
-eigenvec = pd.merge(eigenvec, population, left_on="#IID", right_on="sample_id",
+eigenvec = pd.read_csv('${eigenvec}', sep='\\t')
+population = pd.read_csv("${sample_info}", sep="\\t")
+eigenvec = pd.merge(eigenvec, population, left_on="#IID", right_on="#IID",
                     how="left")
 PC1_2= sns.scatterplot(x=eigenvec.PC1, y=eigenvec.PC2, hue=eigenvec.morphology,
-                       ax= axis[0,1],style=eigenvec.population, alpha=0.25,
+                       ax= axis[0,1],style=eigenvec.population, alpha=0.5,
                        legend='full', s=400)
 legend=axis[0,1].legend(fontsize="large", bbox_to_anchor=(1.05, 1),
-                        loc='upper left', title="References\n ("+ str(n_SNPS)
+                        loc='upper left', title="References\\n ("+ str(n_SNPS)
                         + "M SNPs)")
 axis[0,1].set_xlabel(PC1, fontsize = 12)
 axis[0,1].set_ylabel(PC2, fontsize = 12)
 plt.setp(legend.get_title(),fontsize='large')
 PC1_3= sns.scatterplot(x=eigenvec.PC1, y=eigenvec.PC3, hue=eigenvec.morphology,
-                       ax= axis[1,0],style=eigenvec.population, alpha=0.25,
+                       ax= axis[1,0],style=eigenvec.population, alpha=0.5,
                        s=400, legend=False)
 axis[1,0].set_xlabel(PC1, fontsize = 12)
 axis[1,0].set_ylabel(PC3, fontsize = 12)
 PC3_3=sns.scatterplot(x=eigenvec.PC2, y=eigenvec.PC3, hue=eigenvec.morphology,
-                      ax= axis[1,1],style=eigenvec.population, alpha=0.25,
+                      ax= axis[1,1],style=eigenvec.population, alpha=0.5,
                       s=400, legend=False)
-axis[1,1].set_xlabel(PC2, fontsize = 12)
-axis[1,1].set_ylabel(PC3, fontsize = 12)
-plt.savefig("PCA.svg", dpi=300)
-PC3_3=sns.scatterplot(x=eigenvec.PC2, y=eigenvec.PC3, hue=eigenvec.morphology,
-                      ax= axis[1,1],style=eigenvec.population, alpha=0.25,
-                      s=400,  legend=False)
 axis[1,1].set_xlabel(PC2, fontsize = 12)
 axis[1,1].set_ylabel(PC3, fontsize = 12)
 plt.savefig("${eigenval.baseName}_PCA.svg", dpi=300)
@@ -334,6 +401,7 @@ reference = "$projectDir/lib/NC_030272.1"
 params.assembled_mito = false
 params.vcfs = false
 params.phenotype = "$projectDir/lib/dummy.file"
+params.phenotype_name = "morphology"
 
 workflow MITO {
     take:
@@ -386,11 +454,10 @@ workflow NUCLEAR {
 workflow VCF_QC{
     take:
         VCF
+        ASSEMBLY
     main:
-        ASSEMBLY = Channel.fromPath(params.genome, checkIfExists: true)
-
-    INPUT = PREPARE_FILESQC(ASSEMBLY, VCF) 
-    STATISTICS(INPUT)
+        INPUT = PREPARE_FILESQC(ASSEMBLY, VCF) 
+        STATISTICS(INPUT)
 }
 
 params.filter = true
@@ -399,6 +466,7 @@ params.QC = true
 params.population = false
 params.pca = false
 params.pairwise = false
+params.wide = false 
 workflow {
     ASSEMBLY = Channel.fromPath(params.genome)    
 
@@ -414,36 +482,57 @@ workflow {
     if (params.filter == true) {
         filtered = FILTER(VCF, ASSEMBLY).vcf
     } else {
-        filtered = channel.empty()
+        filtered = VCF
     }
 
     if (params.QC == true){
         VCFs = VCF.concat(filtered)
-        VCF_QC(VCFs)
+        VCF_QC(VCFs, ASSEMBLY)
     } else {
         println("QC was skipped") 
     }
-    VCFs = filtered
 
+    VCFs = filtered
     PHENOTYPES = Channel.fromPath(params.phenotype, checkIfExists: true)
+    PLINKOUTPUT = PLINK2_FORMAT(VCFs, PHENOTYPES)
+    PFILES = PLINKOUTPUT.pfiles
 
     if (params.pairwise != false) {
-        POPULATION1 = Channel.fromPath(params.population, checkIfExists: true)
+        PAIRWISE(PFILES)    
+    } 
+    if (params.wide != false) {
+        WIDE(PFILES, PHENOTYPES)
+    }
+}
+
+workflow PAIRWISE{
+    take:
+    PFILES
+    main:
+        POPULATION1 = Channel.fromPath(params.population1, checkIfExists: true)
         POPULATION2 = Channel.fromPath(params.population2, checkIfExists: true)
         COMPARISONS = POPULATION1.combine(POPULATION2)
-        FST_WINDOWS(VCFs, COMPARISONS)
-        POPULATION = POPULATION1.concat(POPULATION2)
-        
-    } else {
-        POPULATION = Channel.fromPath(params.population)}
-    
-    PLINKOUTPUT = PLINK2_FORMAT(VCFs, PHENOTYPES).pfiles
-    FREQSPECTRUM = AFS(PLINKOUTPUT, POPULATION) 
-    //PLOTAFS(FREQSPECTRUM.pfiles)
-    STATISTICS_WINDOWS(VCFs, POPULATION)  
-    
-    if (params.pca != false){
+        PLINKOUTPUT = PLINK2_PAIRWISE(PFILES, COMPARISONS)
+        PFILES = PLINKOUTPUT.pfiles 
+        PLINK_VCF = PLINKOUTPUT.vcf  
+        FST_WINDOWS(PLINK_VCF, COMPARISONS)
+        GWAS(PFILES)
+        //FREQSPECTRUM = AFS(PFILES, POPULATION) 
+        //PLOTAFS(FREQSPECTRUM.pfiles)
+
+}
+
+workflow WIDE{
+    take:
+    PFILES
+    PHENOTYPES
+    main:
+        POPULATION = Channel.fromPath(params.population, checkIfExists:true)
+        PLINKOUTPUT = PLINK2_WIDE(PFILES)
+        PFILES = PLINKOUTPUT.pfiles      
+        PVCF=PLINKOUTPUT.vcf
+        STATISTICS_WINDOWS(PVCF, POPULATION)
+        FREQSPECTRUM = AFS(PFILES, POPULATION)    
         PCA = PLINK_PCA(FREQSPECTRUM.pfiles)
-        PLOT_PCA(PCA.results, PHENOTYPES)
-        }
-    }
+        PLOT_PCA(PCA.results, PHENOTYPES) //esto puede ser mejorado..d. en PCA.results ya podría estar la info de fenotipos... ya que esa info esta en psam
+}
