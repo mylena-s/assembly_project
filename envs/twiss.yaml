@@ -1,0 +1,9 @@
+name: python_twiss
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python
+  - ete3
+  - numpy
+  - phyml
