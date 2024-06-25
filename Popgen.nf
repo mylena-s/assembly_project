@@ -8,11 +8,6 @@ log.info """\
     Current project dir. is: $projectDir"""
     .stripIndent()
 
-include { MINIMAP; BAMQC; FREEBAYES_JOINT; MARKDUP } from './modules/minimap.nf'  
-params.dtype = "hifi"
-params.mapped = false
-params.nodup = false
-
 process JOIN_VCF {
     label 'low_resources'
     label 'minimap'
@@ -402,6 +397,13 @@ params.assembled_mito = false
 params.vcfs = false
 params.phenotype = "$projectDir/lib/dummy.file"
 params.phenotype_name = "morphology"
+params.dtype = "hifi"
+params.mapped = false
+params.nodup = false
+
+include { MINIMAP; BAMQC; FREEBAYES_JOINT; MARKDUP } from './modules/minimap.nf'  
+include { PHASE_VCF; FIXVCF } from './modules/phasing.nf'  
+
 
 workflow MITO {
     take:
@@ -460,50 +462,6 @@ workflow VCF_QC{
         STATISTICS(INPUT)
 }
 
-params.filter = true
-params.vcf = false
-params.QC = true
-params.population = false
-params.pca = false
-params.pairwise = false
-params.wide = false 
-workflow {
-    ASSEMBLY = Channel.fromPath(params.genome)    
-
-    if (params.vcf == false) {
-        READS = Channel.fromPath(params.reads, checkIfExists:true)
-        VCF = NUCLEAR(READS)
-        // MITO(READS)
-    }
-    else {
-        VCF = Channel.fromPath(params.vcf, checkIfExists: true)
-    }
-
-    if (params.filter == true) {
-        filtered = FILTER(VCF, ASSEMBLY).vcf
-    } else {
-        filtered = VCF
-    }
-
-    if (params.QC == true){
-        VCFs = VCF.concat(filtered)
-        VCF_QC(VCFs, ASSEMBLY)
-    } else {
-        println("QC was skipped") 
-    }
-
-    VCFs = filtered
-    PHENOTYPES = Channel.fromPath(params.phenotype, checkIfExists: true)
-    PLINKOUTPUT = PLINK2_FORMAT(VCFs, PHENOTYPES)
-    PFILES = PLINKOUTPUT.pfiles
-
-    if (params.pairwise != false) {
-        PAIRWISE(PFILES)    
-    } 
-    if (params.wide != false) {
-        WIDE(PFILES, PHENOTYPES)
-    }
-}
 
 workflow PAIRWISE{
     take:
@@ -535,4 +493,59 @@ workflow WIDE{
         FREQSPECTRUM = AFS(PFILES, POPULATION)    
         PCA = PLINK_PCA(FREQSPECTRUM.pfiles)
         PLOT_PCA(PCA.results, PHENOTYPES) //esto puede ser mejorado..d. en PCA.results ya podría estar la info de fenotipos... ya que esa info esta en psam
+}
+
+
+params.filter = true
+params.vcf = false
+params.QC = true
+params.population = false
+params.pca = false
+params.pairwise = false
+params.wide = false 
+
+
+// main workflow following
+
+workflow {
+    ASSEMBLY = Channel.fromPath(params.genome)    
+
+    if (params.vcf == false) {
+        READS = Channel.fromPath(params.reads, checkIfExists:true)
+        VCF = NUCLEAR(READS)
+        // MITO(READS)
+    }
+    else {
+        VCF = Channel.fromPath(params.vcf, checkIfExists: true)
+    }
+
+    if (params.filter == true) {
+        filtered = FILTER(VCF, ASSEMBLY).vcf
+    } else {
+        filtered = VCF
+    }
+
+    if (params.QC == true){
+        VCFs = VCF.concat(filtered)
+        VCF_QC(VCFs, ASSEMBLY)
+    } else {
+        println("QC was skipped") 
+    }
+
+    VCFs = filtered
+    PHENOTYPES = Channel.fromPath(params.phenotype, checkIfExists: true)
+    PLINKOUTPUT = PLINK2_FORMAT(VCFs, PHENOTYPES)
+    PFILES = PLINKOUTPUT.pfiles
+    // phasing
+    VCF = Channel.fromPath(params.vcf, checkIfExists: true)
+    BAMS = Channel.fromPath(params.bams, checkIfExists:true).collect()
+    VCF = FIXVCF(VCF).vcf
+    PHASED_GENO = PHASE_VCF(REFERENCE, VCF, BAMS).phased_vcf
+
+    if (params.pairwise != false) {
+        PAIRWISE(PFILES)    
+    } 
+    if (params.wide != false) {
+        WIDE(PFILES, PHENOTYPES)
+    }
 }
