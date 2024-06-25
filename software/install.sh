@@ -99,3 +99,50 @@ unzip plink2_linux_amd_avx2_20240418.zip
 cd ../bin
 ln -s ../software/plink2 .
 cd ../software
+# vcftools
+git clone https://github.com/vcftools/vcftools.git
+cd vcftools
+./autogen.sh
+./configure --prefix=$PWD
+make
+make install
+cd ../../bin
+ln -s ../software/vcftools/bin/* .
+cd ../software
+
+# beagle
+wget https://faculty.washington.edu/browning/beagle/beagle.01Mar24.d36.jar
+chmod +x beagle*.jar
+cd ../bin/
+ln -s ../software/beagle.*.jar .
+cd ../software
+# twiss
+git clone https://github.com/simonhmartin/genomics_general.git
+git clone https://github.com/simonhmartin/twisst.git
+cd ../bin & ln -s ../software/twiss/*.R .
+ln -s ../software/twiss/*py .
+ln -s ../software/genomics_general/*py .
+ln -s ../software/genomics_general/phylo/*.py
+cd ../software/genomics_general/phylo & cp ../genomics.py .
+cd ../..
+#
+# install TE curation software 
+git clone https://github.com/clemgoub/TE-Aid.git
+cd TE-Aid
+chmod +x blastndotplot.R consensus2genome.R Run-c2g.R reduce.cpp
+cd ../../bin
+ln -s ../software/TE-Aid/*.sh .
+ln -s ../software/TE-Aid/*.R .
+ln -s ../software/TE-Aid/*.cpp .
+cd ../software
+#INSTALL LONGPHASE
+wget https://github.com/twolinin/longphase/releases/download/v1.7.2/longphase_linux-x64.tar.xz
+tar -xJf longphase_linux-x64.tar.xz
+cd ../bin
+ln -s ../software/longphase_linux-x64 .
+cd ../software
+#download TE manual annotation
+git clone https://github.com/annaprotasio/TE_ManAnnot.git
+cd ../bin
+ln -s ../software/TE_ManAnnot/bin/* .
+

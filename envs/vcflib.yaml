@@ -3,7 +3,10 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
-  - vcflib
+  - vcflib=1.0.3
   - tabix
+  - tabixpp=1.1.0
+  - freebayes
   - samtools
   - picard
+  - vcftools
