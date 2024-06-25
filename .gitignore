@@ -14,3 +14,4 @@ nextflow
 lib/uniref90.fasta.gz
 lib/nt
 lib/taxdump/
+lib/Pfam/Pfam-A.hmm*
