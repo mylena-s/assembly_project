@@ -18,18 +18,57 @@ process EARLGREY {
     publishDir "${params.publishDir}/annotation/repeat/", mode: 'copy'
     
     input:
-    path genome
+    tuple path(genome), path(sat)
 
     output:
     path '02_earlGrey_*'
+    path "02_earlGrey_*/${genome.baseName}.masked", emit: masked
+    path "02_earlGrey_*/${genome.baseName}.library", emit: library
 
     script:
     """
     cp $genome ${genome.baseName}_copy.fasta
-    earlGrey -g ${genome.baseName}_copy.fasta -s ${genome.baseName}_copy -o ./02_earlGrey_${genome.baseName} -t $task.cpus -d yes
-    mv .command.log .command.sh 02_earlGrey_${genome.baseName}
+    sed -E 's/>(.*)#(.*)\\s.*/>\\2#Satellite\\/\\2/g' $sat | sed 's/_reads//g' > satellites.fasta
+    earlGrey -l \$PWD'/satellites.fasta' -g ${genome.baseName}_copy.fasta -s ${genome.baseName} -o ./02_earlGrey -t $task.cpus -d yes
+    mv .command.log .command.sh 02_earlGrey/${genome.baseName}
     """
-}   
+}  
+
+process MASK {
+    label 'earlGrey'
+    label 'resource_intensive'
+    publishDir "${params.publishDir}/annotation/repeat/", mode: 'copy'
+
+    input:
+    tuple path(genome), path(lib)
+
+    output:
+    path "04_masking"
+    path "04_masking/*masked", emit: masked_genome
+    script:
+    """
+    RepeatMasker $genome -lib $lib -xsmall -norna -s -pa $task.cpus -a -dir 04_masking
+    calcDivergenceFromAlign.pl -s ${genome.simpleName}.divsum 04_masking/*.align
+    mv *divsum 04_masking
+    mv .command.sh .command.log 04_masking"""
+}
+    
+process BLAST_TES{
+    label 'repeats'
+    label 'medium_resources'
+
+    input:
+    path(library)
+    output:
+    path("${library.simpleName}_pfam.out")
+
+    script:
+    """
+    getorf -sequence $library -outseq out.orf -minsize 300
+    pfam_scan.pl -fasta out.orf -dir $projectDir/lib/Pfam/ -outfile ${library.simpleName}_pfam.out
+    """
+
+}
 
 process SAT_ANNOT {
     label 'minimap'
@@ -40,6 +79,7 @@ process SAT_ANNOT {
     path genome
     output:
     path "01_srf_${genome.baseName}"
+    path "01_srf_${genome.baseName}/*.srf.fa", emit: lib
     path "01_srf_${genome.baseName}/*bed", emit: satbed
 
     script:
@@ -88,15 +128,14 @@ process CENTROMERE{
     """
 }
 
-params.proteins = "lib/Actinopterygii.fasta.gz" 
-
 process BRAKER2 { 
     label 'braker'
     label 'resource_intensive'
     publishDir "${params.publishDir}/annotation/gene/", mode: 'copy'
     
     input:
-    tuple path(genome), path(proteins)
+    path genome
+    path proteins
 
     output:
     
@@ -107,6 +146,12 @@ process BRAKER2 {
     """
 }
 params.gs=800000
+params.satlib = false
+params.centromere = false
+params.replib = false
+params.masked = false
+params.proteins = "lib/Actinopterygii.fasta.gz" 
+
 workflow GENE_ANNOTATION{
     take:
         GENOME
@@ -121,15 +166,38 @@ workflow REPEAT_ANNOTATION{
     take:
         GENOME
     main:
-        //SATELLITE = SAT_ANNOT(GENOME)
-       // REPEATS = EARLGREY(GENOME)
-        modes = ['_complexity.tsv -L ','_entropy.tsv -E ']
-        CENTROMERE(GENOME, modes)
-    
+        if (params.satlib == false){
+            SATELLITE = SAT_ANNOT(GENOME).lib
+        }else{
+            SATELLITE = Channel.fromPath(params.satlib, checkIfExists:true)
+        }
+        if (params.replib==false){
+            INPUT = GENOME.combine(SATELLITE)
+            REPEATS = EARLGREY(INPUT)
+            MASKED = REPEATS.masked
+            LIBRARY = REPEATS.library
+            BLAST_TES(LIBRARY)
+
+        } else {
+            LIBRARY = Channel.fromPath(params.replib)
+            INPUT = GENOME.combine(LIBRARY)
+            MASKED = MASK(INPUT)
+        }
+        if (params.centromere) {
+            modes = ['_complexity.tsv -L ','_entropy.tsv -E ']
+            CENTROMERE(GENOME, modes)}
+    emit:
+        MASKED
 }
 
 workflow {
     ASSEMBLIES = Channel.fromPath(params.genome, checkIfExists: true)
-    GENE_ANNOTATION(ASSEMBLIES)
-    //REPEAT_ANNOTATION(ASSEMBLIES)
+    
+    if (params.masked == false) {
+        MASKED = REPEAT_ANNOTATION(ASSEMBLIES)
+    } else {
+        MASKED = ASSEMBLIES
+    } 
+    
+    GENE_ANNOTATION(MASKED)
 }
