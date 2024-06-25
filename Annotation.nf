@@ -44,12 +44,12 @@ process MASK {
 
     output:
     path "04_masking"
+    path "04_masking/*masked", emit: masked_genome
     script:
     """
-    RepeatMasker $genome -lib $lib -xsmall -norna -s -pa $task.cpus -dir 04_masking
-    """
+    RepeatMasker $genome -lib $lib -xsmall -norna -s -pa $task.cpus -a -dir 04_masking
+    calcDivergenceFromAlign.pl -s ${genome.simpleName}.divsum 04_masking/*.align.gz"""
 }
-//calcDivergenceFromAlign.pl -s mygenome.divsum  mygenome.fa.align.gz
     
 process BLAST_TES{
     label 'repeats'
@@ -126,8 +126,6 @@ process CENTROMERE{
     """
 }
 
-params.proteins = "lib/Actinopterygii.fasta.gz" 
-
 process BRAKER2 { 
     label 'braker'
     label 'resource_intensive'
@@ -142,7 +140,7 @@ process BRAKER2 {
     script:
     """
     gunzip -c $proteins > proteins.fa
-    braker.pl --species=Crenicichla --genome=$genome --prot_seq=proteins.fa --workingdir=braker2_${genome.baseName} --threads=$task.cpus --busco_lineage=actinopterygii_odb10
+    braker.pl --species=Crenicichla --genome=$genome --prot_seq=proteins.fa --workingdir=braker2_${genome.simpleName} --threads=$task.cpus --busco_lineage=actinopterygii_odb10
     """
 }
 params.gs=800000
@@ -150,6 +148,8 @@ params.satlib = false
 params.centromere = false
 params.replib = false
 params.masked = false
+params.proteins = "lib/Actinopterygii.fasta.gz" 
+
 workflow GENE_ANNOTATION{
     take:
         GENOME
@@ -184,7 +184,8 @@ workflow REPEAT_ANNOTATION{
         if (params.centromere) {
             modes = ['_complexity.tsv -L ','_entropy.tsv -E ']
             CENTROMERE(GENOME, modes)}
-   
+    emit:
+        MASKED
 }
 
 workflow {
@@ -195,5 +196,6 @@ workflow {
     } else {
         MASKED = ASSEMBLIES
     } 
-    //GENE_ANNOTATION(MASKED)
+    
+    GENE_ANNOTATION(MASKED)
 }
