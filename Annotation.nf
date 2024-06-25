@@ -48,7 +48,9 @@ process MASK {
     script:
     """
     RepeatMasker $genome -lib $lib -xsmall -norna -s -pa $task.cpus -a -dir 04_masking
-    calcDivergenceFromAlign.pl -s ${genome.simpleName}.divsum 04_masking/*.align.gz"""
+    calcDivergenceFromAlign.pl -s ${genome.simpleName}.divsum 04_masking/*.align
+    mv *divsum 04_masking
+    mv .command.sh .command.log 04_masking"""
 }
     
 process BLAST_TES{
