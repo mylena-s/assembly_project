@@ -118,6 +118,27 @@ process MITOHIFI{
 }
 
 
+process PLINK2_FILTER {
+    label 'low_resources'
+    publishDir "${params.publishDir}/population/popgen/00_input", mode: 'copy'   
+
+    input:
+    path vcf
+
+    output:
+    path ".*command.*"
+    path ("*vcf"), emit: vcf
+
+    script:
+    def name = "${vcf}".replaceAll(".vcf.gz","")
+    """
+    plink2 --make-pgen --vcf $vcf --allow-extra-chr --max-alleles 2 --mind 0.1 --export vcf-4.2 --vcf-half-call m --maf 0.05 --out $name --set-all-var-ids '@:#\$r\$a' --new-id-max-allele-len 1000 truncate
+    mv .command.sh .${name}.command.sh
+    mv .command.log .${name}.command.log
+    """
+    // no multiallelic, remove samples with > 10% missing, remove alelles with freq <5%
+}
+
 process PLINK2_FORMAT {
     label 'low_resources'
     publishDir "${params.publishDir}/population/popgen/00_input", mode: 'copy'   
@@ -129,11 +150,12 @@ process PLINK2_FORMAT {
     output:
     path ".*command.*"
     tuple path("*.pgen"), path("*.psam"), path("*.pvar"), emit: pfiles
+    path ("*vcf"), emit: vcf
 
     script:
     def name = "${vcf}".replaceAll(".vcf.gz","")
     """
-    plink2 --make-pgen --vcf $vcf --allow-extra-chr --max-alleles 2 --mind 0.1 --vcf-half-call m --maf 0.05 --out $name --set-all-var-ids '@:#\$r\$a' --new-id-max-allele-len 1000 truncate --pheno $phenotypes 
+    plink2 --make-pgen --vcf $vcf --allow-extra-chr --max-alleles 2 --mind 0.1 --export vcf-4.2 --vcf-half-call m --maf 0.05 --out $name --set-all-var-ids '@:#\$r\$a' --new-id-max-allele-len 1000 truncate --pheno $phenotypes 
     mv .command.sh .${name}.command.sh
     mv .command.log .${name}.command.log
     """
@@ -534,13 +556,15 @@ workflow {
 
     VCFs = filtered
     PHENOTYPES = Channel.fromPath(params.phenotype, checkIfExists: true)
-    PLINKOUTPUT = PLINK2_FORMAT(VCFs, PHENOTYPES)
-    PFILES = PLINKOUTPUT.pfiles
+    PLINKVCF = PLINK2_FILTER(VCFs).vcf
     // phasing
-    VCF = Channel.fromPath(params.vcf, checkIfExists: true)
     BAMS = Channel.fromPath(params.bams, checkIfExists:true).collect()
-    VCF = FIXVCF(VCF).vcf
-    PHASED_GENO = PHASE_VCF(REFERENCE, VCF, BAMS).phased_vcf
+    VCF = FIXVCF(PLINKVCF).vcf
+    PHASED_GENO = PHASE_VCF(ASSEMBLY, VCF, BAMS).phased_vcf
+
+    //produce pfiles
+    PLINKOUTPUT = PLINK2_FORMAT(PHASED_GENO, PHENOTYPES)
+    PFILES = PLINKOUTPUT.pfiles
 
     if (params.pairwise != false) {
         PAIRWISE(PFILES)    
