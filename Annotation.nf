@@ -134,15 +134,16 @@ process BRAKER2 {
     publishDir "${params.publishDir}/annotation/gene/", mode: 'copy'
     
     input:
-    path genome
-    path proteins
+    tuple path(genome), path(proteins)
 
     output:
     
     script:
     """
     gunzip -c $proteins > proteins.fa
-    braker.pl --species=Crenicichla --genome=$genome --prot_seq=proteins.fa --workingdir=braker2_${genome.simpleName} --threads=$task.cpus --busco_lineage=actinopterygii_odb10
+    cp -r /opt/Augustus/config config_temp
+    braker.pl --species=Crenicichla --genome=$genome --prot_seq=proteins.fa --workingdir=braker2_${genome.simpleName} --threads=$task.cpus --busco_lineage=actinopterygii_odb10 --AUGUSTUS_CONFIG_PATH=\$PWD'/config_temp' --AUGUSTUS_BIN_PATH=/opt/Augustus/bin/ --AUGUSTUS_SCRIPTS_PATH=/opt/Augustus/scripts/
+    rm config_temp
     """
 }
 params.gs=800000
@@ -158,7 +159,7 @@ workflow GENE_ANNOTATION{
     
     main:
         REFPROT = Channel.fromPath(params.proteins,  checkIfExists: true)
-        INPUT = ASSEMBLIES.combine(REFPROT)
+        INPUT = GENOME.combine(REFPROT)
         ANNOT = BRAKER2(INPUT)
 }
 

@@ -153,7 +153,7 @@ process PLINK2_FORMAT {
     path ("*vcf"), emit: vcf
 
     script:
-    def name = "${vcf}".replaceAll(".vcf.gz","")
+    def name = "phased_filtered"
     """
     plink2 --make-pgen --vcf $vcf --allow-extra-chr --max-alleles 2 --mind 0.1 --export vcf-4.2 --vcf-half-call m --maf 0.05 --out $name --set-all-var-ids '@:#\$r\$a' --new-id-max-allele-len 1000 truncate --pheno $phenotypes 
     mv .command.sh .${name}.command.sh
