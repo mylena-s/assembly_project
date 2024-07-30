@@ -7,3 +7,4 @@ dependencies:
   - ete3
   - numpy
   - phyml
+  - raxml

@@ -87,10 +87,15 @@ cd ../software
 #variantqc
 singularity pull discvrseq.sif docker://ghcr.io/bimberlab/discvrseq:latest
 
-# wig to bigwig
+# wig to bigwig and bigwig to bedgraph
 wget http://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64.v369/wigToBigWig
 chmod +x wigToBigWig
 cd ../bin/ & ln -s ../software/wigToBigWig . 
+cd ../software
+wget http://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64.v369/bigWigToBedGraph
+chmod +x bigWigToBedGraph 
+cd ../bin/
+ln -s ../software/bigWigToBedGraph .
 cd ../software
 
 # plink2
@@ -145,4 +150,32 @@ cd ../software
 git clone https://github.com/annaprotasio/TE_ManAnnot.git
 cd ../bin
 ln -s ../software/TE_ManAnnot/bin/* .
+	cd ../software
+# install bwa
+git clone https://github.com/lh3/bwa
+cd bwa && make
+cd ../../bin/
+ln -s ../software/bwa/bwa
+cd ../software/
+# admixture
+wget https://dalexander.github.io/admixture/binaries/admixture_linux-1.3.0.tar.gz
+tar -xzvf admixture_linux-1.3.0.tar.gz
+cd ../bin/
+ln -s ../software/dist/admixture_linux-1.3.0/admixture
+# chromopainter
+cd assembly_project/software/
+wget https://people.maths.bris.ac.uk/~madjl/finestructure/plink2chromopainter.pl.zip
+unzip plink2chromopainter.pl.zip
+wget https://people.maths.bris.ac.uk/~madjl/finestructure/makeuniformrecfile.pl.zip
+unzip makeuniformrecfile.pl.zip 
+wget https://people.maths.bris.ac.uk/~madjl/finestructure-old/chromopainter-0.0.4.tar.gz
+tar -xzvf chromopainter-0.0.4.tar.gz 
+cd chromopainter-0.0.4/
+./configure --prefix=$PWD
+make
+make install
+cd ../bin
+ln -s ../software/chromopainter-0.0.4/chromopainter
+ln -s ../software/makeuniformrecfile.pl
+ln -s ../software/plink2chromopainter.pl
 

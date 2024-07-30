@@ -3,11 +3,11 @@
 log.info """\
     P I P E L I N E    F O R   R E P E A T 
               A N N O T A T I O N 
-    =======================================
-    Uses NextDenovo as ONT assembler or Hifiasm
-                 for Pacbio hifi. 
+    =========================================
+    Performs repeat annotation and masking,
+    and gene annotation with different tools  
     
-    Also performs QC with different tools
+    Also performs QC with busco
     
     Current project dir. is: $projectDir"""
     .stripIndent()
@@ -22,15 +22,15 @@ process EARLGREY {
 
     output:
     path '02_earlGrey_*'
-    path "02_earlGrey_*/${genome.baseName}.masked", emit: masked
-    path "02_earlGrey_*/${genome.baseName}.library", emit: library
+    path "02_earlGrey_*/${genome.baseName}_EarlGrey/${genome.baseName}_summaryFiles/${genome.baseName}.softmasked.fasta", emit: masked
+    path "02_earlGrey_*/${genome.baseName}_EarlGrey/${genome.baseName}_summaryFiles/${genome.baseName}_combined_library.fasta", emit: library
 
     script:
     """
     cp $genome ${genome.baseName}_copy.fasta
     sed -E 's/>(.*)#(.*)\\s.*/>\\2#Satellite\\/\\2/g' $sat | sed 's/_reads//g' > satellites.fasta
     earlGrey -l \$PWD'/satellites.fasta' -g ${genome.baseName}_copy.fasta -s ${genome.baseName} -o ./02_earlGrey -t $task.cpus -d yes
-    mv .command.log .command.sh 02_earlGrey/${genome.baseName}
+    mv .command.log .command.sh 02_earlGrey/${genome.baseName}_EarlGrey
     """
 }  
 
@@ -99,70 +99,117 @@ process SAT_ANNOT {
     """
 }
 
-process CENTROMERE{
-    label 'medium_resources'
-    publishDir "${params.publishDir}/annotation/repeat/", mode: 'copy', pattern: '03_nessie*'
-    errorStrategy 'ignore'
-    label 'minimap'
-    input:
-    path genome
-    each mode
-
-    output:
-    path '*_complexity.tsv', optional: true, emit: complexity
-    path '*_entropy.tsv', optional: true, emit: entropy
-
-    script:
-    """
-    mkdir 03_nessie_${genome.baseName}
-    nessie -I $genome -O $genome$mode-l 10000 -s 1000
-    for file in *tsv; do to_wig.py -i \$file -o \$file'.wig'; done
-    for file in *wig; do tail -n +2 \$file | grep -v 'track type' - > \$file'.bw'; done
-    samtools faidx $genome
-    awk '{print \$1, \$2}' $genome'.fai' > $genome'.chrsizes'
-    for file in *.bw; do wigToBigWig \$file *.chrsizes \$file'.bigwig'; done
-    cp *tsv 03_nessie_${genome.baseName}
-    cp *bigwig 03_nessie_${genome.baseName}
-    cp .command.sh 03_nessie_${genome.baseName}/.${genome.baseName}.command.sh
-    cp .command.log 03_nessie_${genome.baseName}/.${genome.baseName}.command.log
-    """
-}
-
 process BRAKER2 { 
     label 'braker'
     label 'resource_intensive'
-    publishDir "${params.publishDir}/annotation/gene/", mode: 'copy'
+    publishDir "${params.publishDir}/annotation/gene/structural", mode: 'copy'
     
     input:
     tuple path(genome), path(proteins)
 
     output:
+    path "braker2_${genome.simpleName}"
+    path "braker2_${genome.simpleName}/braker.aa", emit: prot
     
     script:
     """
     gunzip -c $proteins > proteins.fa
     cp -r /opt/Augustus/config config_temp
     braker.pl --species=Crenicichla --genome=$genome --prot_seq=proteins.fa --workingdir=braker2_${genome.simpleName} --threads=$task.cpus --busco_lineage=actinopterygii_odb10 --AUGUSTUS_CONFIG_PATH=\$PWD'/config_temp' --AUGUSTUS_BIN_PATH=/opt/Augustus/bin/ --AUGUSTUS_SCRIPTS_PATH=/opt/Augustus/scripts/
-    rm config_temp
+    rm -r config_temp
     """
 }
+
+process GALBA {
+    label 'galba'
+    label 'resource_intensive'
+    publishDir "${params.publishDir}/annotation/gene/structural", mode: 'copy'
+    containerOptions '-B $HOME -H $HOME:$HOME'
+
+    input:
+    tuple path( genome), path(proteins)
+    
+    output:
+    path "GALBA/"
+    path "GALBA/galba.gtf"
+    path "GALBA/galba.aa", emit:prot
+
+    script:
+    """
+gunzip -c $proteins > proteins.fa
+cp -r /opt/Augustus/config/ config_temp
+galba.pl --genome=$genome --prot_seq=proteins.fa --threads=$task.cpus --AUGUSTUS_CONFIG_PATH=\$PWD/config_temp --AUGUSTUS_BIN_PATH=/opt/Augustus/bin/ --AUGUSTUS_SCRIPTS_PATH=/opt/Augustus/scripts/ 
+cp .command.sh .command.log GALBA
+rm proteins.fa"""
+
+}
+
+process BUSCO_PROT{
+    label 'busco'                                                                                                                                        
+    label 'medium_resources'                                                                                                                             
+    publishDir "${params.publishDir}/annotation/gene/", mode: 'copy'    
+
+    input:
+    path proteins
+    
+    output:
+    path "${proteins.simpleName}_busco/"
+
+    script:
+    """busco -i $proteins -l actinopterygii_odb10 -o ${proteins.simpleName}_busco -m prot -c $task.cpus
+    generate_plot.py -wd ${proteins.simpleName}_busco                                                                           
+    cp .command.sh .command.log ${proteins.simpleName}_busco"""
+}
+
+process FUNCTIONAL_ANNOT {
+    label 'eggnog'
+    label 'resource_intensive'
+    publishDir "${params.publishDir}/annotation/gene/functional", mode: 'copy'
+    input:
+    path proteins
+    output:
+    path "eggnog_output"
+    
+    script:
+    """
+    emapper.py -i $proteins -o ${proteins.simpleName} --cpu $task.cpus --data_dir $projectDir/lib/
+    mkdir eggnog_output 
+    mv ${proteins.simpleName}* eggnog_output 
+    mv .command.sh eggnog_output/.${proteins.simpleName}.eggnog.command.sh
+    mv .command.sh eggnog_output/.${proteins.simpleName}.eggnog.command.log
+    """
+}
+
+
+
 params.gs=800000
 params.satlib = false
 params.centromere = false
 params.replib = false
 params.masked = false
 params.proteins = "lib/Actinopterygii.fasta.gz" 
+params.protannot = false
 
 workflow GENE_ANNOTATION{
     take:
         GENOME
+        mode
     
-    main:
-        REFPROT = Channel.fromPath(params.proteins,  checkIfExists: true)
-        INPUT = GENOME.combine(REFPROT)
-        ANNOT = BRAKER2(INPUT)
+    main:         
+        if (params.protannot == false){
+            REFPROT = Channel.fromPath(params.proteins,  checkIfExists: true)
+            INPUT = GENOME.combine(REFPROT)
+            if (mode == "braker"){
+                ANNOT = BRAKER2(INPUT)}            
+            else {
+                ANNOT = GALBA(INPUT)
+            proteins = ANNOT.prot}
+        } else {
+            proteins = Channel.fromPath(params.protannot, checkIfExists:true)}
+    BUSCO_PROT(proteins)
+    FUNCTIONAL_ANNOT(proteins)
 }
-
+include { CENTROMERE } from './modules/centromere.nf'  
 workflow REPEAT_ANNOTATION{
     take:
         GENOME
@@ -200,5 +247,5 @@ workflow {
         MASKED = ASSEMBLIES
     } 
     
-    GENE_ANNOTATION(MASKED)
+    GENE_ANNOTATION(MASKED, params.mode)
 }

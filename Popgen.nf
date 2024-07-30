@@ -74,6 +74,7 @@ process FILTER{
     input:
     path vcf
     each path(reference)
+    tuple val(mindep), val(maxdep)
 
     output:
     path "*_filtered_normalized.vcf.gz", emit: vcf
@@ -84,7 +85,7 @@ process FILTER{
     """
     bgzip -d $vcf
     vt decompose_blocksub ${vcf.baseName} | vt normalize -r $reference - > intermediate.vcf
-    vcffilter -f 'QUAL / AO > 10 & TYPE = snp' -g 'DP > 1 & DP < 20' intermediate.vcf > ${name}_filtered_normalized.vcf
+    vcffilter -f 'QUAL / AO > 10 & TYPE = snp' -g 'DP > $mindep & DP < $maxdep' intermediate.vcf > ${name}_filtered_normalized.vcf
     bgzip *_filtered_normalized.vcf
     """
 }
@@ -132,11 +133,11 @@ process PLINK2_FILTER {
     script:
     def name = "${vcf}".replaceAll(".vcf.gz","")
     """
-    plink2 --make-pgen --vcf $vcf --allow-extra-chr --max-alleles 2 --mind 0.1 --export vcf-4.2 --vcf-half-call m --maf 0.05 --out $name --set-all-var-ids '@:#\$r\$a' --new-id-max-allele-len 1000 truncate
+    plink2 --make-pgen --vcf $vcf --allow-extra-chr --max-alleles 2 --export vcf-4.2 --vcf-half-call m  --out $name --set-all-var-ids '@:#\$r\$a' --new-id-max-allele-len 1000 truncate
     mv .command.sh .${name}.command.sh
     mv .command.log .${name}.command.log
     """
-    // no multiallelic, remove samples with > 10% missing, remove alelles with freq <5%
+    // remove multiallelic, do not remove samples with > 10% missing yet, do not remove alelles with freq <5% because might improve phasing
 }
 
 process PLINK2_FORMAT {
@@ -155,7 +156,7 @@ process PLINK2_FORMAT {
     script:
     def name = "phased_filtered"
     """
-    plink2 --make-pgen --vcf $vcf --allow-extra-chr --max-alleles 2 --mind 0.1 --export vcf-4.2 --vcf-half-call m --maf 0.05 --out $name --set-all-var-ids '@:#\$r\$a' --new-id-max-allele-len 1000 truncate --pheno $phenotypes 
+    plink2 --make-pgen --vcf $vcf --allow-extra-chr --max-alleles 2 --export vcf-4.2 --vcf-half-call m --maf 0.05 --out $name --set-all-var-ids '@:#\$r\$a' --new-id-max-allele-len 1000 truncate --pheno $phenotypes 
     mv .command.sh .${name}.command.sh
     mv .command.log .${name}.command.log
     """
@@ -178,7 +179,7 @@ process PLINK2_WIDE {
     def name = "${pgen.baseName}_wide"
 
     """
-    plink2 --pfile ${pgen.baseName} --allow-extra-chr --maf 0.05 --geno 0.01 --export vcf-4.2 --out ${name} --threads $task.cpus --make-pgen
+    plink2 --pfile ${pgen.baseName} --allow-extra-chr --maf 0.05 --mind 0.1 --geno 0.05 --export vcf-4.2 --out ${name} --threads $task.cpus --make-pgen
     mv .command.sh .${name}.command.sh
     mv .command.log .${name}.command.log
     """
@@ -197,13 +198,14 @@ process PLINK2_PAIRWISE {
     path ".*command.*"
     tuple path("*.pgen"), path("*.psam"), path("*.pvar"), emit: pfiles
     path "*_pairwise.vcf", emit: vcf
+    path "hwe_pass.snplist"
 
     script:
     def name = "${pgen.baseName}_pairwise"
 
     """
-    plink2 --pfile ${pgen.baseName} --allow-extra-chr --maf 0.05 --geno 0.05 --threads $task.cpus --keep $population --hwe 1e-20 --keep-if morphology == 1 --write-snplist --out hwe_pass
-    plink2 --pfile ${pgen.baseName} --extract hwe_pass.snplist --export vcf-4.2 --out ${name} --make-pgen
+    plink2 --pfile ${pgen.baseName} --allow-extra-chr --maf 0.05 --geno $params.missing_loci --threads $task.cpus --keep $population --hwe 1e-20 --keep-if morphology == 2 --write-snplist --out hwe_pass
+    plink2 --pfile ${pgen.baseName} --extract hwe_pass.snplist --keep $population --export vcf-4.2 --out ${name} --make-pgen
     mv .command.sh .${name}.command.sh
     mv .command.log .${name}.command.log
     """
@@ -344,7 +346,7 @@ process GWAS{
 
     script:
     """
-    plink2 --pfile ${pgen.baseName} --pheno-name $params.phenotype_name --glm no-firth allow-no-covars --out gwas_results --allow-extra-chr --threads $task.cpus  
+    plink2 --pfile ${pgen.baseName} --pheno-name $params.phenotype_name --glm firth-fallback allow-no-covars --out gwas_results --allow-extra-chr --threads $task.cpus  
     """
 //--covar ${covariateFile} --covar-col-nums ${covariateCols}  hide-covar https://cloufield.github.io/GWASTutorial/06_Association_tests/
 } 
@@ -390,28 +392,46 @@ eigenvec = pd.read_csv('${eigenvec}', sep='\\t')
 population = pd.read_csv("${sample_info}", sep="\\t")
 eigenvec = pd.merge(eigenvec, population, left_on="#IID", right_on="#IID",
                     how="left")
-PC1_2= sns.scatterplot(x=eigenvec.PC1, y=eigenvec.PC2, hue=eigenvec.morphology,
-                       ax= axis[0,1],style=eigenvec.population, alpha=0.5,
-                       legend='full', s=400)
+PC1_2= sns.scatterplot(x=eigenvec.PC1, y=eigenvec.PC2, hue=eigenvec.$params.hue,
+                       ax= axis[0,1],style=eigenvec.$params.style, alpha=0.5,
+                       legend='full', s=200,palette=sns.color_palette("Paired"))
 legend=axis[0,1].legend(fontsize="large", bbox_to_anchor=(1.05, 1),
                         loc='upper left', title="References\\n ("+ str(n_SNPS)
                         + "M SNPs)")
 axis[0,1].set_xlabel(PC1, fontsize = 12)
 axis[0,1].set_ylabel(PC2, fontsize = 12)
 plt.setp(legend.get_title(),fontsize='large')
-PC1_3= sns.scatterplot(x=eigenvec.PC1, y=eigenvec.PC3, hue=eigenvec.morphology,
-                       ax= axis[1,0],style=eigenvec.population, alpha=0.5,
-                       s=400, legend=False)
+PC1_3= sns.scatterplot(x=eigenvec.PC1, y=eigenvec.PC3, hue=eigenvec.$params.hue,
+                       ax= axis[1,0],style=eigenvec.$params.style, alpha=0.5,
+                       s=200, legend=False, s=200,palette=sns.color_palette("Paired"))
 axis[1,0].set_xlabel(PC1, fontsize = 12)
 axis[1,0].set_ylabel(PC3, fontsize = 12)
-PC3_3=sns.scatterplot(x=eigenvec.PC2, y=eigenvec.PC3, hue=eigenvec.morphology,
-                      ax= axis[1,1],style=eigenvec.population, alpha=0.5,
-                      s=400, legend=False)
+PC3_3=sns.scatterplot(x=eigenvec.PC2, y=eigenvec.PC3, hue=eigenvec.$params.hue,
+                      ax= axis[1,1],style=eigenvec.$params.style, alpha=0.5,
+                      s=200, legend=False, s=200,palette=sns.color_palette("Paired"))
 axis[1,1].set_xlabel(PC2, fontsize = 12)
 axis[1,1].set_ylabel(PC3, fontsize = 12)
 plt.savefig("${eigenval.baseName}_PCA.svg", dpi=300)
 """
 }
+
+
+
+process ADMIXTURE{
+    label 'medium_resources'
+    input:
+    path vcf
+    output:
+    tuple path ("*.P"), path ("*.Q")
+    script:
+    """
+    plink2 --vcf $vcf --make-bed --out ${vcf.simpleName} --allow-extra-chr --indep-pairwise 50 10 0.1
+    awk '{\$1="0";print \$0}' ${vcf.simpleName}.bim > int
+    mv int ${vcf.simpleName}.bim
+    admixture --cv ${vcf.simpleName}.bed 2 -j10 > ${vcf.simpleName}_admixture.log
+    """
+} ///should avoid snps in LD, the current is for more than 50 samples
+
 
 params.winsize=10000
 reference = "$projectDir/lib/NC_030272.1"
@@ -422,6 +442,11 @@ params.phenotype_name = "morphology"
 params.dtype = "hifi"
 params.mapped = false
 params.nodup = false
+params.missing = 0.1
+params.missing_loci = 0.1
+params.hue = "species"
+params.style = "morphology"
+params.coverage = 400
 
 include { MINIMAP; BAMQC; FREEBAYES_JOINT; MARKDUP } from './modules/minimap.nf'  
 include { PHASE_VCF; FIXVCF } from './modules/phasing.nf'  
@@ -444,30 +469,30 @@ workflow MITO {
 
 workflow NUCLEAR {    
     take:
-    READS
+    ASSEMBLY
 
     main:
-    ASSEMBLY = Channel.fromPath(params.genome, checkIfExists: true)    
-    INPUT = ASSEMBLY.combine(READS)
     COLLECTED_MAPPINGS = channel.empty()
 
     if (params.mapped == false) {
+        READS = Channel.fromPath(params.reads, checkIfExists:true)
+        INPUT = ASSEMBLY.combine(READS)
         MAPPINGS = MINIMAP(INPUT).mappings
     } else {
         MAPPINGS = Channel.fromPath(params.mapped) 
     }
     if (params.nodup == false) {
         MAPPINGS_NODUP = MARKDUP(MAPPINGS).mappings
+        BAMQC(MAPPINGS_NODUP)
         COLLECTED_MAPPINGS = MAPPINGS_NODUP.collect()
     } else {
         MAPPINGS_NODUP = Channel.fromPath(params.nodup, checkIfExists:true) 
-        COLLECTED_MAPPINGS = MAPPINGS_NODUP.collect()}
-    BAMQC(MAPPINGS_NODUP)
+        COLLECTED_MAPPINGS = MAPPINGS_NODUP.collect()} 
     contigs_file = file(params.contigs)
     allcontigs = Channel.fromList(contigs_file.readLines())
     GENOME_CONTIG = ASSEMBLY.combine(allcontigs)
     if (params.vcfs == false) {
-        VCFS = FREEBAYES_JOINT(GENOME_CONTIG, COLLECTED_MAPPINGS).vcf.collect()
+        VCFS = FREEBAYES_JOINT(GENOME_CONTIG, COLLECTED_MAPPINGS, params.coverage, "").vcf.collect()
     } else {
         VCFS = Channel.fromPath(params.vcfs, checkIfExists: true).collect()}   
     ALL_VCF = JOIN_VCF(VCFS).vcf
@@ -494,8 +519,7 @@ workflow PAIRWISE{
         COMPARISONS = POPULATION1.combine(POPULATION2)
         PLINKOUTPUT = PLINK2_PAIRWISE(PFILES, COMPARISONS)
         PFILES = PLINKOUTPUT.pfiles 
-        PLINK_VCF = PLINKOUTPUT.vcf  
-        FST_WINDOWS(PLINK_VCF, COMPARISONS)
+        FST_WINDOWS(PLINKOUTPUT.vcf, COMPARISONS)
         GWAS(PFILES)
         //FREQSPECTRUM = AFS(PFILES, POPULATION) 
         //PLOTAFS(FREQSPECTRUM.pfiles)
@@ -533,8 +557,7 @@ workflow {
     ASSEMBLY = Channel.fromPath(params.genome)    
 
     if (params.vcf == false) {
-        READS = Channel.fromPath(params.reads, checkIfExists:true)
-        VCF = NUCLEAR(READS)
+        VCF = NUCLEAR(ASSEMBLY)
         // MITO(READS)
     }
     else {
@@ -542,7 +565,7 @@ workflow {
     }
 
     if (params.filter == true) {
-        filtered = FILTER(VCF, ASSEMBLY).vcf
+        filtered = FILTER(VCF, ASSEMBLY, [1, 20]).vcf
     } else {
         filtered = VCF
     }

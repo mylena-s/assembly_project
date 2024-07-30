@@ -133,6 +133,29 @@ process CUTADAPT{
 """
 }
 
+
+
+process CUTADAPTSHORT{
+    label 'cutadapt'
+    label 'low_resources'
+    publishDir "${params.publishDir}/pre_assembly/trimming/cutadapt/", mode: 'copy'    
+
+    input:
+    tuple val(name), path(reads)
+    output:
+    path '*_trimmed.fq.gz', emit: reads
+    path '*.cutadapt.json', emit: report
+    path '.command.*'
+
+    script:
+    """
+    cutadapt -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT -o ${name}_trimmed_1.fastq -p ${name}_trimmed_2.fastq ${reads[0]} ${reads[1]} -q 20
+    mv .command.sh .${name}.command.sh
+    mv .command.log .${name}.command.log    
+"""
+}
+
+
 process MULTIQC{
     publishDir "${params.publishDir}/pre_assembly/", mode: 'copy'    
 
