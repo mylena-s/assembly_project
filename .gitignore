@@ -15,3 +15,11 @@ lib/uniref90.fasta.gz
 lib/nt
 lib/taxdump/
 lib/Pfam/Pfam-A.hmm*
+RAD
+A_citrinellus
+lib/Cichliformes.fasta.gz
+lib/download_eggnog_data.py
+lib/eggnog.db
+lib/eggnog.taxa.db
+lib/eggnog.taxa.db.traverse.pkl
+lib/eggnog_proteins.dmnd
