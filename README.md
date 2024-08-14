@@ -19,7 +19,7 @@ All software was installed using mamba or otherwise stated in software/install.s
 
 # Scripts explanation
 | Script | Uses |
------------------
+| -------- | ------------------------------------------|
 | readQC.nf | Read quality assessment before assembly |
 | Assembly.nf | Genome assembly with ONT and HIFI reads |
 | AssemblyCuration.nf | Scaffolding |
