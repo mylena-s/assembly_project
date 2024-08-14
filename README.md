@@ -1,7 +1,7 @@
 ## *Crenicichla tuca* genome assembly
 This branch contains nextflow scripts used for all assembly steps and analysis presented in *C. tuca* genome report.
 
-![Workflow](https://github.com/mylena-s/assembly_project/blob/CtucaBranch/github.png?raw=true)
+![Workflow](https://github.com/mylena-s/assembly_project/blob/CtucaBranch/github.png?raw=true | width=100)
 
 **Reference**
 
