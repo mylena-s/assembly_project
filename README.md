@@ -8,7 +8,7 @@ All analysis were performed integrated in nextflow these workflows, except for:
 * TOGA annotation: custom script runToga.sh
 * FCS-NCBI: run on Usegalaxy.org
 * OMark: run on https://omark.omabrowser.org/
-
+* Small file manipulation scripts: python or bash scripts used for small taks can be found on /others
 
 ### Example scripts 
 Examples of bash scripts used for executing the pipeline are found on /examples
