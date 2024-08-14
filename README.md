@@ -12,3 +12,5 @@ All analysis were performed integrated in nextflow these workflows, except for:
 
 ### Example scripts 
 Examples of bash scripts used for executing the pipeline are found on /examples
+
+All software was installed using mamba or otherwise stated in software/install.sh
