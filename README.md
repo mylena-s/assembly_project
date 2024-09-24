@@ -13,7 +13,7 @@ All analysis were performed integrated in nextflow these workflows, except for:
 * Small file manipulation scripts: python or bash scripts used for small taks can be found on /others
 
 ### Example scripts 
-Examples of bash scripts used for executing the pipeline are found on /examples
+Examples of bash scripts used for executing the pipeline are found in /examples
 
 All software was installed using mamba or otherwise stated in software/install.sh
 
