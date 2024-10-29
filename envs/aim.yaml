@@ -1,0 +1,7 @@
+name: AIM
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-vcfr
+  - bcftools
