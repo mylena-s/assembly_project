@@ -179,3 +179,7 @@ ln -s ../software/chromopainter-0.0.4/chromopainter
 ln -s ../software/makeuniformrecfile.pl
 ln -s ../software/plink2chromopainter.pl
 
+#mvftools
+cd ../software
+git clone https://www.github.com/jbpease/mvftools
+

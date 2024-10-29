@@ -7,4 +7,4 @@ dependencies:
   - pandas
   - matplotlib
   - seaborn
-
+  - biopython

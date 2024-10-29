@@ -176,7 +176,7 @@ process FUNCTIONAL_ANNOT {
     mkdir eggnog_output 
     mv ${proteins.simpleName}* eggnog_output 
     mv .command.sh eggnog_output/.${proteins.simpleName}.eggnog.command.sh
-    mv .command.sh eggnog_output/.${proteins.simpleName}.eggnog.command.log
+    mv .command.log eggnog_output/.${proteins.simpleName}.eggnog.command.log
     """
 }
 
@@ -189,7 +189,7 @@ params.replib = false
 params.masked = false
 params.proteins = "lib/Actinopterygii.fasta.gz" 
 params.protannot = false
-
+params.funcannot = false 
 workflow GENE_ANNOTATION{
     take:
         GENOME
@@ -206,9 +206,11 @@ workflow GENE_ANNOTATION{
             proteins = ANNOT.prot}
         } else {
             proteins = Channel.fromPath(params.protannot, checkIfExists:true)}
-    BUSCO_PROT(proteins)
-    FUNCTIONAL_ANNOT(proteins)
+        if (params.funcannot != false) {
+            FUNCTIONAL_ANNOT(proteins)}
+        BUSCO_PROT(proteins)
 }
+
 include { CENTROMERE } from './modules/centromere.nf'  
 workflow REPEAT_ANNOTATION{
     take:

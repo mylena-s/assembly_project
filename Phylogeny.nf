@@ -5,7 +5,8 @@ process ESTIMATE_TREES{
 
     input:
     path(phased_genotypes)
-    each size 
+    each size
+    val(optional)
 
     output:
     path("phased.geno.phyml_bionj.w*.trees.gz"), emit: trees
@@ -14,8 +15,7 @@ process ESTIMATE_TREES{
 
     script:
     """
-    parseVCF.py -i $phased_genotypes --skipIndels > phased.geno                                                                    
-    phyml_sliding_windows.py -T $task.cpus -g phased.geno --prefix phased.geno.phyml_bionj.w${size} -w $size --windType sites --model GTR --optimise n
+    phyml_sliding_windows.py -T $task.cpus -g $phased_genotypes --prefix phased.geno.phyml_bionj.w${size} -w $size --windType sites $optional --model GTR --optimise n
     mv .command.sh .phyml.command.sh
     mv .command.log .phyml.command.log"""
 }
@@ -27,19 +27,21 @@ process TWISST {
     label 'twiss'
 
     input:
-    path(trees)
+    each path(trees)
     each path(groups)
+    val (groups_text)
+    val (outgroup)
 
     output:
     path("*.weights.csv.gz")
-    tuple path(".twisst.command.sh"), path(".twisst.command.log")
+    tuple path(".*twisst.command.sh"), path(".*twisst.command.log")
 
     
     script:
     """
-    twisst.py -t $trees -w ${trees.baseName}_output.weights.csv.gz -g guaraniBL -g guaraniNL -g tuca -g iguassuensis --groupsFile $groups
-    mv .command.sh .twisst.command.sh
-    mv .command.log .twisst.command.log"""
+    twisst.py -t $trees -w ${trees.baseName}_${outgroup}_output.weights.csv.gz $groups_text --groupsFile $groups --outgroup $outgroup
+    mv .command.sh .${trees.baseName}_${outgroup}.twisst.command.sh
+    mv .command.log .${trees.baseName}_${outgroup}.twisst.command.log"""
 }
 
 process DISTANCE{
@@ -56,8 +58,7 @@ process DISTANCE{
 
     script:
     """
-    parseVCF.py -i $phased_genotypes --skipIndels > phased.geno
-    distMat.py -g phased.geno -f phased --windType cat -o genotypes.dist -T $task.cpus
+    distMat.py -g $phased_genotypes -f phased --windType cat -o genotypes.dist -T $task.cpus
     mv .command.sh .network.command.sh
     mv .command.log .network.command.log"""
 }
@@ -65,12 +66,15 @@ process DISTANCE{
 workflow TOPOLOGY_WEIGHTS {
     take:
         GENOTYPES
+        winsize
     main:
 
-    winsize = channel.from(["25","50","100"])
-    TREES = ESTIMATE_TREES(GENOTYPES, winsize).trees
+    winsize = channel.from(winsize)
+    TREES = ESTIMATE_TREES(GENOTYPES, winsize, params.optional).trees
     GROUPS = Channel.fromPath(params.groups, checkIfExists: true)
-    TWISST(TREES, GROUPS)
+    TWIST_GROUPS = channel.from(params.twisstgroups)
+    OUTGROUP = Channel.from(params.outgroup)
+    TWISST(TREES, GROUPS, TWIST_GROUPS, OUTGROUP)
     }
 
 
@@ -82,6 +86,8 @@ workflow PHYLONETWORK{
 }
 
 params.phased = false
+params.twistgroups =  "-g guaraniBL -g guaraniNL -g tuca -g iguassuensis"
+params.optional = ""
 
 include { PHASE_VCF; FIXVCF } from './modules/phasing.nf'  
 
@@ -92,13 +98,13 @@ workflow{
             VCF = Channel.fromPath(params.vcf, checkIfExists: true)
             BAMS = Channel.fromPath(params.bams, checkIfExists:true).collect()
             VCF = FIXVCF(VCF).vcf
-            PHASED_GENO = PHASE_VCF(REFERENCE, VCF, BAMS).phased_vcf
+            PHASED_GENO = PHASE_VCF(REFERENCE, VCF, BAMS).geno
         } else {
             PHASED_GENO = PHASING(VCF).geno
         }
     } else {
         PHASED_GENO = Channel.fromPath(params.phased, checkIfExists:true)
     }
-    TOPOLOGY_WEIGHTS(PHASED_GENO)
+    TOPOLOGY_WEIGHTS(PHASED_GENO, ["25","50","100"])
     PHYLONETWORK(PHASED_GENO)
 }

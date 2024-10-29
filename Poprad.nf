@@ -1,8 +1,10 @@
 include { BWA; BAMQC; FREEBAYES_JOINT; MARKDUP;FREEBAYES_GENOTYPE} from './modules/minimap.nf'  
 
-include { JOIN_VCF; FILTER as DECOMPOSE } from './Popgen.nf'
+include { JOIN_VCF; FILTER as DECOMPOSE; VCF_QC } from './Popgen.nf'
 
 include { PHASING } from './modules/phasing.nf'
+include { PHYLONETWORK; TOPOLOGY_WEIGHTS } from './Phylogeny.nf'
+
 params.winsize=10000
 
 process FILTER{
@@ -37,25 +39,22 @@ process PLINK2_RAD {
     output:
     path ".*command.*"
     tuple path ("*eigenvec"), path("*eigenval")
-    path "${vcf.simpleName}_plink*"
-    path "${vcf.simpleName}_plink*.vcf", emit: vcf
+    tuple path ("*pgen"), path("*psam"), path("*pvar")
+    path "${vcf.simpleName}_pca.vcf", emit: vcf
 
     
     script:
 
     """
-    LC_NUMERIC="C" seq -s " " 0.05 0.05 1.0 > mybins.txt
-    plink2 --make-pgen --vcf $vcf --allow-extra-chr --maf 0.05 --geno $params.missing_loci --export vcf-4.2 --out ${vcf.simpleName}  --set-all-var-ids '@:#\$r\$a' --new-id-max-allele-len 1000 truncate --threads $task.cpus --vcf-half-call missing
-    plink2 --pfile ${vcf.simpleName} --allow-extra-chr --freq alt1bins-file='mybins.txt' --out ${vcf.simpleName}_afs
-    plink2 --pfile ${vcf.simpleName} --allow-extra-chr --snps-only --read-freq ${vcf.simpleName}_afs.afreq --export vcf-4.2 --pca --out ${vcf.simpleName}_plink --maf 0.05    
-    mv .command.sh .${vcf.simpleName}.command.sh
-    mv .command.log .${vcf.simpleName}.command.log
+    plink2 --make-pgen --vcf $vcf --allow-extra-chr --geno 0.5 --out ${vcf.simpleName}_filter1 --set-all-var-ids '@:#\$r\$a' --new-id-max-allele-len 1000 truncate --threads $task.cpus --vcf-half-call missing
+    plink2 --make-pgen --pfile ${vcf.simpleName}_filter1 --allow-extra-chr --snps-only --mind 0.7 --geno $params.missing_loci --freq --out ${vcf.simpleName}_filter2 --threads $task.cpus 
+    plink2 --pfile ${vcf.simpleName}_filter2 --allow-extra-chr --read-freq ${vcf.simpleName}_filter2.afreq --export vcf-4.2 --pca --out ${vcf.simpleName}_pca    
     """
 // missingness // hw 
 }
 
 process MERGEVCF{
-    label 'vcflib'
+    label 'minimap'
     input:
     
     tuple path(vcf1), path(vcf2)
@@ -66,7 +65,7 @@ process MERGEVCF{
     """
 tabix $vcf1
 tabix $vcf2
-vcf-merge $vcf1 $vcf2 | bgzip -c > merged.vcf.gz"""
+bcftools merge $vcf1 $vcf2 | bgzip -c > merged.vcf.gz"""
 
 }
 process VCFtoBED{
@@ -84,8 +83,12 @@ params.coverage = 3000
 params.vcf =false
 params.phasing = false 
 params.merge_vcf = false
+params.regenotype = true
+params.phylo = false
+params.variantcall = true
 
-workflow {
+
+workflow VARIANTCALL {
 // prepare files
     ASSEMBLY = Channel.fromPath(params.genome)    
     READS = channel.fromFilePairs(params.reads, checkIfExists:true)
@@ -113,16 +116,42 @@ workflow {
         FILTERED = DECOMPOSE(VCF_JOINED, ASSEMBLY, [2, 50])
     } else {
         VCF = Channel.fromPath(params.vcf)
-        bed = VCFtoBED(VCF).bed
-        VCFSOUT = FREEBAYES_GENOTYPE(bed,ASSEMBLY, COLLECTED_MAPPINGS).vcf
-        FILTERED = FILTER(VCFSOUT, [2,20])
-        if (params.merge_vcf != false){
-            INPUTVCF = VCF.combine(FILTERED.vcf) 
-            FILTERED = MERGEVCF(INPUTVCF)
+        if (params.regenotype==true){
+            bed = VCFtoBED(VCF).bed
+            VCFSOUT = FREEBAYES_GENOTYPE(bed,ASSEMBLY, COLLECTED_MAPPINGS).vcf
+            FILTERED = FILTER(VCFSOUT, [2,20])
+            if (params.merge_vcf != false){
+                INPUTVCF = VCF.combine(FILTERED.vcf) 
+                FILTERED = MERGEVCF(INPUTVCF).vcf
+            }
+        } else {
+            FILTERED = Channel.fromPath(params.regenotype)
+            INPUTVCF = VCF.combine(FILTERED)
+            FILTERED = MERGEVCF(INPUTVCF).vcf
         }
-    }    
-    FINALVCF = PLINK2_RAD(FILTERED.vcf).vcf
-    if (params.phasing != false){
-        PHASED = PHASING(FINALVCF)
     }
+    VCF_QC(FILTERED, ASSEMBLY)    
+    FINALVCF = PLINK2_RAD(FILTERED).vcf
+
+    if (params.phylo != false){
+        PHASED_GENO = PHASING(FINALVCF).geno
+        PHYLO(PHASED_GENO)}        
 }
+
+workflow PHYLO {
+    take:
+        PHASED_GENO
+    main:
+        DIST = PHYLONETWORK(PHASED_GENO)
+        TWISST = TOPOLOGY_WEIGHTS(PHASED_GENO, ["3","5","10"])
+}
+
+workflow {
+    if (params.variantcall == true) {
+        VARIANTCALL()}
+    if (params.phylo != false) {
+        PHASED_GENO = Channel.fromPath(params.phased)
+        PHYLO(PHASED_GENO)
+    }
+
+} 

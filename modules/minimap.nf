@@ -25,7 +25,7 @@ process MINIMAP{
 }
 
 process MINIMAP2{
-    label 'medium_resources'
+    label 'resource_intensive'
     label 'minimap'
     maxForks 10
     publishDir "${params.publishDir}/alignment", mode: 'copy'   
@@ -103,6 +103,7 @@ process BAMQC {
     
     output:
     path "${bam.baseName}/", emit: report
+    path "${bam.baseName}/genome_results.txt", emit: txt
     path ".command*"
 
     script:
@@ -160,3 +161,29 @@ process FREEBAYES_GENOTYPE{
     mv .command.log jointcall.command.log
     """
 }
+
+
+process FREEBAYES_SINGLE{
+    label 'low_resources'
+    publishDir "${params.publishDir}/phasing/variant_calling/00_freebayes", mode: 'copy'   
+    label 'vcflib'
+    maxForks 5
+
+    input:
+    path(genome)
+    val(bam)
+    val(cov)
+    val(optional)
+
+    output:
+    path "*.vcf", emit: vcf
+    path ".command.*"
+
+    script:
+    """
+    samtools index -M $bam
+    freebayes -f $genome -b $bam --gvcf -g $cov --ploidy 2 > ${genome.baseName}.vcf
+    mv .command.sh jointcall.command.sh
+    mv .command.log jointcall.command.log
+    """
+}   
