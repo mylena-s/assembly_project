@@ -1,5 +1,5 @@
-## *Crenicichla tuca* genome assembly
-This branch contains nextflow scripts used for all assembly steps and analysis presented in *C. tuca* genome report.
+## *Crenicichla tuca* genome assembly and analysis
+This branch contains scripts used for all assembly steps and analysis presented in the paper presenting *C. tuca* genome.
 
 <img src="https://github.com/mylena-s/assembly_project/blob/CtucaBranch/github.png?raw=true" width="1000">
 
