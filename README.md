@@ -29,3 +29,5 @@ All software was installed using mamba or otherwise stated in software/install.s
 | Synteny.nf | Alignment and synteny detection |
 | nextflow.config | Enviromental excecution parameters for cluster |
 | nextflow_ferropc.config | Enviromental excecution parameters for local cluster without queues and low resources |
+| scripts/ | folder containing scripts for plotting and other small analysis |
+| scripts/other.txt | text file containing small commands run on terminal for specific file conversions and opperations |
