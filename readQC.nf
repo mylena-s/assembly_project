@@ -133,8 +133,6 @@ process CUTADAPT{
 """
 }
 
-
-
 process CUTADAPTSHORT{
     label 'cutadapt'
     label 'low_resources'
@@ -143,7 +141,7 @@ process CUTADAPTSHORT{
     input:
     tuple val(name), path(reads)
     output:
-    path '*_trimmed.fq.gz', emit: reads
+    tuple path('*_1.fastq'), path('*_2.fastq'), emit: reads
     path '*.cutadapt.json', emit: report
     path '.command.*'
 
@@ -154,7 +152,6 @@ process CUTADAPTSHORT{
     mv .command.log .${name}.command.log    
 """
 }
-
 
 process MULTIQC{
     publishDir "${params.publishDir}/pre_assembly/", mode: 'copy'    
@@ -178,11 +175,14 @@ workflow {
             RESULTS = ADAPTOR_CHECK(READS)
             TRIMMED = RESULTS.reads
             REPORTS = RESULTS.report.collect()}
-            
         if (params.type == 'hifi') {
-            RESULTS = CUTADAPT(READS)}
+            RESULTS = CUTADAPT(READS)
             TRIMMED = RESULTS.reads
-            REPORTS = RESULTS.report
+            REPORTS = RESULTS.report}
+        if (params.type == 'illumina'){
+            SHORTR = Channel.fromFilePairs(params.reads, checkIfExists:true)
+            RESULTS = CUTADAPTSHORT(SHORTR)
+            TRIMMED = RESULTS.reads}
     } else {
         READS = channel.empty()    
         TRIMMED = Channel.fromPath(params.reads, checkIfExists:true)}

@@ -183,3 +183,9 @@ ln -s ../software/plink2chromopainter.pl
 cd ../software
 git clone https://www.github.com/jbpease/mvftools
 
+
+
+#deepvariant
+wget https://github.com/dnanexus-rnd/GLnexus/releases/download/v1.4.1/glnexus_cli
+chmod +x glnexus_cli
+ln -s glnexus_cli ../bin/

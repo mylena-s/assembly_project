@@ -190,6 +190,9 @@ params.masked = false
 params.proteins = "lib/Actinopterygii.fasta.gz" 
 params.protannot = false
 params.funcannot = false 
+params.skip_gene = false
+
+
 workflow GENE_ANNOTATION{
     take:
         GENOME
@@ -231,7 +234,7 @@ workflow REPEAT_ANNOTATION{
         } else {
             LIBRARY = Channel.fromPath(params.replib)
             INPUT = GENOME.combine(LIBRARY)
-            MASKED = MASK(INPUT)
+            MASKED = MASK(INPUT).masked_genome
         }
         if (params.centromere) {
             modes = ['_complexity.tsv -L ','_entropy.tsv -E ']
@@ -248,6 +251,6 @@ workflow {
     } else {
         MASKED = ASSEMBLIES
     } 
-    
-    GENE_ANNOTATION(MASKED, params.mode)
+    if (params.skip_gene == false){
+       GENE_ANNOTATION(MASKED, params.mode)}
 }

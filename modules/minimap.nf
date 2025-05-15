@@ -16,7 +16,7 @@ process MINIMAP{
     def mem = "${task.memory}".replaceAll("\\sGB","G")
     def name = "${reads.baseName}".replaceAll(".fastq","")
     """minimap2 -ax map-$params.dtype $genome $reads -o ${name}.sam
-    samtools view -b ${name}.sam -o ${name}.bam 
+    samtools view -bq 30 ${name}.sam -o ${name}.bam 
     rm *sam
     bamaddrg -b ${name}.bam -s ${name} > ${name}_RG.bam 
     samtools sort -@${task.cpus} -O BAM -o ${name}_sorted.bam ${name}_RG.bam   
@@ -43,8 +43,8 @@ process MINIMAP2{
     def mem = "${task.memory}".replaceAll("\\sGB","G")
     def name = "${reads.baseName}".replaceAll(".fastq","")
 
-    """minimap2 -ax map-$type $genome $reads -o ${name}.sam
-    samtools view -bq 20 ${name}.sam -o ${name}.bam 
+    """minimap2 --secondary=no -ax map-$type $genome $reads -o ${name}.sam
+    samtools view -bq 30 ${name}.sam -o ${name}.bam 
     rm *sam
     samtools sort -@${task.cpus} -O BAM -o ${genome.baseName}_${name}_sorted.bam ${name}.bam   
     rm ${name}.bam
