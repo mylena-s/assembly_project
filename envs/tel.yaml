@@ -1,0 +1,8 @@
+name: telomere
+channels:
+  - conda-forge
+  - bioconda
+  - anaconda
+dependencies:
+  - tidk
+  - seqkit

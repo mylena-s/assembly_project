@@ -1,8 +1,8 @@
-name: whatshap
+name: sniffles
 channels:
   - conda-forge
   - bioconda
 dependencies:
-  - whatshap
+  - pip:
+    - sniffles
   - samtools
-  - bcftools

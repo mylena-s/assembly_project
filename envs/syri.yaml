@@ -1,8 +1,10 @@
-name: whatshap
+name: syri
 channels:
   - conda-forge
   - bioconda
+  - anaconda
 dependencies:
-  - whatshap
+  - syri
+  - plotsr
+  - minimap2
   - samtools
-  - bcftools

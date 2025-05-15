@@ -1,0 +1,6 @@
+name: pangenome
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - pggb

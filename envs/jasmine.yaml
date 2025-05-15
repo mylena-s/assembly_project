@@ -1,0 +1,7 @@
+name: jasmine
+channels:
+  - conda-forge
+  - bioconda
+  - anaconda
+dependencies:
+  - jasminesv
