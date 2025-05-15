@@ -1,0 +1,23 @@
+# jasmine merging of SVs
+jasmine -Xmx18g --normalize_type --ignore_strand --file_list= --output_genotypes --dup_to_ins genome_file= out_file=
+
+# count shared svs
+grep "SUPP_VEC=11" merged_clean.vcf | awk '{print $1}' | sort | uniq -c | sort -k1 > shared_svs.count
+
+
+# generate karyotype file for ideogram construction
+awk '{print "chr\t-\t"$1"\t"$1"\t0\t"$2"\tblack"}' CBFH00195_synteny.fasta.fai  > tuca.karyotype.txt  # must sort afterwards by chr number
+
+# transform gff to gtf
+agat_convert_sp_gff2gtf.pl --gff input.gff3 -o output.gtf
+# toga add introns
+agat_sp_add_introns.pl --gff input.gtf -o output_with_introns.gtf
+
+# estimate density of features (SVs, hets)
+bedtools makewindows -g genome.fasta.fai -w 100000 > windows.bed
+bedtools coverage -a ../karyotype/CBFH00195_synteny.windows -b repeats_synteny.merged.bed > CBFH00195_repeats_coverage.bed
+
+# dotplots with flexidot
+flexidot -i *.fasta -m 0 -t nuc -A 4 -f svg 
+
+
