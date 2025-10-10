@@ -1,2 +1,0 @@
-# gene annotation after repeat masking
-./nextflow Annotation.nf -c nextflow_ferropc.config --publishDir CBFH00195/results/ --genome CBFH00195/results/annotation/repeat/04_masking/CBFH00195.fasta.masked --masked true
