@@ -1,3 +1,4 @@
+params.plot = true
 process MINIMAP2{
     label 'resource_intensive'
     label 'syri'
@@ -21,7 +22,7 @@ process MINIMAP2{
 }
 
 process SYRI{
-    label 'medium_resources'
+    label 'resource_intensive'
     label 'syri'
     maxForks 10
     publishDir "${params.publishDir}/synteny", mode: 'copy'   
@@ -88,5 +89,6 @@ workflow {
         }
     
     // Run SYNTENY with the paired SYRI outputs
-    SYNTENY(syri_pairs, genomes)
+    if (params.plot == true){
+        SYNTENY(syri_pairs, genomes)}
 }

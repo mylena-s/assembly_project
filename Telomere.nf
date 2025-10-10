@@ -14,7 +14,7 @@ process FIND_TELOMERES{
     script:
     def string = "TTAGGG" 
 """seqkit seq -u $genome > upper.genome.fasta
-tidk search -s $string -w 1000 -o ${genome.simpleName}_${string} --dir . upper.genome.fasta
+tidk search -s $string -w 10000 -o ${genome.simpleName}_${string} --dir . upper.genome.fasta
 mv .command.sh .telomere.command.sh
 mv .command.log .telomere.command.log
 """

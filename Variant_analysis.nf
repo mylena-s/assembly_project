@@ -12,7 +12,7 @@ params.dtype = "hifi"
 params.variant_analysis = false
 params.popsize = false
 params.bam = false 
-
+params.phase = false
 process HETEROZYGOSIS {
     label 'low_resources'
     label 'minimap'
@@ -113,6 +113,7 @@ process MSMC2_DEEPVARIANT{
     path ("*vcf.gz")
 
     script:
+    def optional = params.phase == true ? "--as_phased True" : ''
     """
     grep ${chr} ${mask} > ${chr}.${mask}
     tabix $vcf
@@ -121,9 +122,8 @@ process MSMC2_DEEPVARIANT{
     tabix ${vcf.simpleName}_filtered.vcf.gz
     bcftools view ${vcf.simpleName}_filtered.vcf.gz -r $chr > ${chr}.${vcf}
     bgzip ${chr}.${vcf}
-    generate_multihetsep.py --mask ${chr}.${mask} --negative_mask $repeats ${chr}.${vcf}.gz > ${chr}.multihetsep.txt
+    generate_multihetsep.py --mask ${chr}.${mask} --negative_mask $repeats ${chr}.${vcf}.gz $optional > ${chr}.multihetsep.txt
     msmc2_Linux -t $task.cpus -p '15*1' -o ${chr}.out.msmc2 ${chr}.multihetsep.txt
-
 """
 }
 
@@ -175,6 +175,34 @@ mkdir intermediate
 /opt/deepvariant/bin/run_deepvariant --model_type $model --ref $genome --reads $mapping --output_vcf ${mapping.simpleName}_${contig}.vcf --output_gvcf ${mapping.simpleName}_${contig}.gvcf --regions $contig --num_shards $task.cpus --intermediate_results_dir intermediate
 """
 }
+
+process PHASE_VCF{
+    label 'whatshap'
+    label "resource_intensive"
+    publishDir "${params.publishDir}/population/phylogeny/00_phasing/", mode: 'copy'
+
+    input:
+    path (reference)
+    tuple path(vcf), path(bams)
+
+    output:
+    tuple path("*.phased.vcf.gz"), path("*bam", includeInputs:true), emit: phased_vcf
+    path("phasing_statistics.tsv")
+    tuple path(".whatshap.command.sh"), path(".whatshap.command.log")
+
+    script:
+    """
+    samtools faidx $reference
+    samtools index -M $bams -@$task.cpus
+    tabix $vcf
+    whatshap phase -o ${bams.baseName}.phased.vcf --ignore-read-groups --reference=$reference $vcf $bams
+    whatshap stats ${bams.baseName}.phased.vcf --tsv phasing_statistics.tsv ; done
+    gzip ${bams.baseName}.phased.vcf
+    mv .command.sh .whatshap.command.sh
+    mv .command.log .whatshap.command.log
+    """
+}
+
 
 //process SURVIVOR?{}
 process GLXNEXUS {
@@ -286,7 +314,12 @@ workflow {
     } else {
         VCF = Channel.fromPath(params.vcf) /// es importante q este vcf sea vcf y no gvcf, de la manera q está escrito el pipeline aquí va a dar error, por lo tanto hay q correr en dos etapas: calling y luego todo el resto
         BAM = Channel.fromPath(params.bam)
-        INPUT = VCF.combine(BAM)} 
+        preINPUT = VCF.combine(BAM)
+        if (params.phase == true){
+            INPUT = PHASE_VCF(ASSEMBLY, preINPUT).phased_vcf
+        } else {
+            INPUT = preINPUT
+        }} 
     if (params.variant_analysis != false) {
         VARIANT_ANALYSIS(INPUT, ASSEMBLY)
     }    
