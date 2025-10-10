@@ -7,13 +7,11 @@ This branch contains scripts used for all assembly steps and analysis presented 
 
 All analysis were performed integrated in nextflow these workflows, except for:
 * D-genies: run using an interactive local server.
-* TOGA annotation: custom script runToga.sh
+* TOGA annotation
 * FCS-NCBI: run on Usegalaxy.org
 * OMark: run on https://omark.omabrowser.org/
-* Small file manipulation scripts: python or bash scripts used for small taks can be found on /scripts
+* Small file manipulation scripts: python or bash scripts used for small taks can be found on /scripts together with .sh scripts for running nextflow pipelines
 
-### Example scripts 
-Examples of bash scripts used for executing the pipeline are found in /examples
 
 All software was installed using mamba or otherwise stated in software/install.sh
 
