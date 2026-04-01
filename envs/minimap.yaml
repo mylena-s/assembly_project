@@ -8,3 +8,5 @@ dependencies:
   - bamaddrg
   - bcftools
   - kmc
+  - bedtools
+  - mosdepth

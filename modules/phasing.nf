@@ -56,3 +56,25 @@ process PHASE_VCF{
 //    whatshap phase -o phased.vcf --merge-reads --error-rate=0.03 --maximum-error-rate=0.05 --chromosome Ctuca_Chr1 --reference=$reference $vcf $bams
 
 }
+
+
+process LONGPHASE {
+    label 'whatshap'
+    label "resource_intensive"
+    publishDir "${params.publishDir}/population/phylogeny/00_phasing/", mode: 'copy'
+
+    input:
+    path (reference)
+    tuple path(vcf1), path(vcf2)
+    path(bams)
+
+    output:
+    path("phased.vcf"), emit: phased_vcf
+    path("*phasing_statistics.tsv")
+    tuple path(".longphase.command.sh"), path(".longphase.command.log")
+    
+    script:
+    """longphase phase -s $vcf1 --sv-file $vcf2 -b $bams -r $reference -t $task.cpus -o phased --ont
+for file in phased*.vcf; do whatshap stats $file --tsv $file'.phasing_statistics.tsv'; done
+"""
+}

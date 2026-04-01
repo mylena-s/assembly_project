@@ -33,8 +33,7 @@ with open('config', 'w') as file:
     """
 }
 
-process ASSEMBLY_ONT {
-    label 'nextpolish'
+process ASSEMBLY_ONT_NEXTDENOVO {
     label 'resource_intensive'
     errorStrategy 'ignore'
 
@@ -59,6 +58,28 @@ process ASSEMBLY_ONT {
     mv 01_rundir/03.ctg_graph/*fasta.stat nextdenovo
     mv .command.sh .command.log nextdenovo
     cp run.cfg nextdenovo
+    """
+}
+
+process ASSEMBLY_ONT_HIFIASM {
+    label 'resource_intensive'
+    publishDir "${params.publishDir}/assembly/hifiasm/", mode: 'copy', pattern: "hifiasm/"
+
+    input:
+    path reads
+
+    output:
+    path "hifiasm"
+    path "hifiasm/*asm.bp.p_ctg.gfa.fasta", emit: assembly
+    
+    script:
+    """
+    hifiasm -o ${reads.baseName}.asm -t $task.cpus --ont $reads
+    mkdir hifiasm 
+    mv ${reads.baseName}.asm* hifiasm
+    mv .command* hifiasm
+    cd hifiasm
+    for file in *gfa; do gfastats \$file -o fa --discover-paths > \$file'.fasta'; done
     """
 }
 
@@ -97,7 +118,8 @@ process POLISH {
 
     script:
     """
-    ls $reads > lgs.fofn
+    gunzip -c $reads > ${reads.baseName}
+    ls ${reads.baseName} > lgs.fofn
     nextPolish $config_file
     seqkit seq 01_rundir/genome.nextpolish.fasta -u > 01_rundir/nextpolish.upper.fasta
     mkdir nextpolish
@@ -127,7 +149,7 @@ process  ASSEMBLY_HIFI {
     mv ${reads.baseName}.asm* hifiasm
     mv .command* hifiasm
     cd hifiasm
-    for file in *gfa; do gfastats $file -o fa --discover-paths > $file'.fasta'
+    for file in *gfa; do gfastats \$file -o fa --discover-paths > \$file'.fasta'; done
     """
 }
 
@@ -212,8 +234,8 @@ process PURGE_HAPLOTIGS {
     val type
 
     output:
-    path "haplotigs_out_${val}"
-    path "haplotigs_out_${val}/curated.fasta", emit: curated
+    path "haplotigs_out_${genome.baseName}"
+    path "haplotigs_out_${genome.baseName}/curated.fasta", emit: curated
 
     script:
     """
@@ -226,12 +248,11 @@ process PURGE_HAPLOTIGS {
     cp .command.sh .command.log haplotigs_out_${genome.baseName}"""
 }
 
-params.template1 = "/home/fhenning/assembly_project/lib/nextdenovo.cfg"
-params.template2 = "/home/fhenning/assembly_project/lib/nextpolish.cfg"
+params.template1 = "/media/jmf/DATOS2/mylena/assembly_project/lib/nextdenovo.cfg"
+params.template2 = "/media/jmf/DATOS2/mylena/assembly_project/lib/nextpolish.cfg"
 params.assembled = false 
 params.type = "ont" 
 params.gs = 900
-params.db = '/home/fhenning/assembly_project/lib/actinopterygii_odb10.tar.gz'
 params.nreads = 2
 params.ul = "NO_FILE"
 
@@ -243,8 +264,7 @@ workflow {
     UL = Channel.fromPath(params.ul, checkIfExists:false)
     if (params.assembled == false) {
         if (params.type == "ont") {
-            CONFIG = PREPARE_CONFIG(params.template1)
-            PRIMARY = ASSEMBLY_ONT(READS,CONFIG).assembly
+            PRIMARY = ASSEMBLY_ONT_HIFIASM(READS).assembly
             BREAKTIGS = BREAK_MISSASSEM(PRIMARY, READS).output
             HAPLOTIGS = PURGE_HAPLOTIGS(BREAKTIGS, READS, "ont").curated
             SCAFFOLD = SCAFFOLDING(HAPLOTIGS, READS).scaffolded_genome
@@ -266,7 +286,15 @@ workflow {
     }
     else {
         PRIMARY = Channel.fromPath(params.assembled)
-        HAPLOTIGS = PURGE_HAPLOTIGS(PRIMARY, READS, params.type)
-
-    }
+        if (params.type == "ont"){
+            // BREAKTIGS = BREAK_MISSASSEM(PRIMARY, READS).output
+            // HAPLOTIGS = PURGE_HAPLOTIGS(BREAKTIGS, READS, "ont").curated
+            HAPLOTIGS = PRIMARY
+            SCAFFOLD = SCAFFOLDING(HAPLOTIGS, READS).scaffolded_genome
+            //config = MAKECFG(SCAFFOLD).config_file //replace with SCAFFOLD
+            //POLISHED = POLISH(config, READS).assembly
+            // ASSEMBLIES = PRIMARY.concat(BREAKTIGS, HAPLOTIGS, SCAFFOLD, POLISHED)    
+        }else{
+            HAPLOTIGS = PURGE_HAPLOTIGS(PRIMARY, READS, params.type)
+    }}
 }
